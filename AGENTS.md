@@ -70,6 +70,8 @@
 - `captura_screen.dart` uses `image_picker` (camera), copies the image into the documents directory, inserts the pending row, shows the success snackbar and refreshes a `FutureBuilder` list; "Sincronizar Ahora" calls `sincronizarFotos()`.
 - Keep comments in comment-only Dart files as `//`, not `///`: top-level doc comments without a `library;` directive trigger `dangling_library_doc_comments` in `flutter analyze`. The default `test/widget_test.dart` was rewritten for `SupervisorApp` instead of the template's `MyApp`.
 
+- CI: `.github/workflows/build_apk.yml` builds the APK on pushes to `main` that touch `movil/**` (checkout@v4, setup-java@v4 temurin 17, subosito/flutter-action@v2 stable, `flutter pub get`, `flutter build apk --release`, upload-artifact@v4). The artifact path covers both `build/app/outputs/flutter-apk/` and the legacy `build/app/outputs/apk/release/`.
+
 ## Run / verify
 - Start with `./.venv/bin/python main.py` (uvicorn + reload on :8000). Run `pytest -v` (43 tests); `tests/conftest.py` fakes the Supabase client (including Auth), the YOLO model and the Cloudinary uploader is monkeypatched, so tests need no network. `tests/test_websockets.py` uses `TestClient.websocket_connect`.
 - Check the environment with `./.venv/bin/pip check`. No CI or lint/typecheck config yet.
