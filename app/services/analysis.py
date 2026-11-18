@@ -1,18 +1,29 @@
 """YOLOv8 inference and Supabase persistence for construction-site safety."""
 
 import json
+import shutil
 import threading
+import urllib.request
 from pathlib import Path
 from typing import Any
 
+from huggingface_hub import hf_hub_download
 from ultralytics import YOLO
 
 from app.api.websockets import manager
 from app.services.database import create_alerta, save_analisis, update_imagen_url
 from app.services.storage import upload_to_cloudinary
 
+ROOT = Path(__file__).resolve().parents[2]
 MODEL_NAME = "yolov8n.pt"
 PPE_MODEL_NAME = "ppe_model.pt"
+MODEL_PATH = ROOT / MODEL_NAME
+PPE_MODEL_PATH = ROOT / PPE_MODEL_NAME
+MODEL_URL = (
+    "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt"
+)
+PPE_REPO_ID = "wntrsldr/yolov8n-ppe-detection-6classes"
+PPE_HUB_FILENAME = "best.pt"
 PERSON_CLASSES = {"person"}
 HELMET_CLASSES = {"helmet", "hard_hat"}
 VEST_CLASSES = {"vest", "safety_vest"}
@@ -27,13 +38,44 @@ _ppe_model_lock = threading.Lock()
 analysis_results: dict[str, dict[str, Any]] = {}
 
 
+def _download_person_model() -> None:
+    """Fetch the COCO weights from Ultralytics when they are not bundled."""
+    if MODEL_PATH.is_file():
+        return
+    print(f"[MODEL] Descargando {MODEL_NAME} desde Ultralytics", flush=True)
+    urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+
+
+def _download_ppe_model() -> None:
+    """Fetch the six-class PPE weights from Hugging Face when not bundled."""
+    if PPE_MODEL_PATH.is_file():
+        return
+    print(f"[MODEL] Descargando {PPE_MODEL_NAME} desde Hugging Face", flush=True)
+    cached = Path(hf_hub_download(repo_id=PPE_REPO_ID, filename=PPE_HUB_FILENAME))
+    shutil.copyfile(cached, PPE_MODEL_PATH)
+
+
+def ensure_models() -> None:
+    """Download missing weights at startup; failures are logged, not fatal.
+
+    The lazy loaders retry on first inference, so a transient network error
+    during boot does not take the whole service down.
+    """
+    for download in (_download_person_model, _download_ppe_model):
+        try:
+            download()
+        except Exception as exc:
+            print(f"[MODEL] WARN no se pudo descargar el modelo: {exc}", flush=True)
+
+
 def get_model() -> YOLO:
     """Lazy, thread-safe loader (downloads ``yolov8n.pt`` on first use)."""
     global _model
     if _model is None:
         with _model_lock:
             if _model is None:
-                _model = YOLO(MODEL_NAME)
+                _download_person_model()
+                _model = YOLO(str(MODEL_PATH))
     return _model
 
 
@@ -43,7 +85,8 @@ def get_ppe_model() -> YOLO:
     if _ppe_model is None:
         with _ppe_model_lock:
             if _ppe_model is None:
-                _ppe_model = YOLO(str(Path(PPE_MODEL_NAME)))
+                _download_ppe_model()
+                _ppe_model = YOLO(str(PPE_MODEL_PATH))
     return _ppe_model
 
 

@@ -1,5 +1,8 @@
 """FastAPI entrypoint for the construction-site supervision backend."""
 
+import asyncio
+from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,8 +14,17 @@ from app.api.metrics import router as metrics_router
 from app.api.routes import router as api_router
 from app.api.websockets import router as websockets_router
 from app.core.config import settings
+from app.services.analysis import ensure_models
 
-app = FastAPI(title="Supervisor IA", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    """Fetch the gitignored model weights before the service accepts traffic."""
+    await asyncio.to_thread(ensure_models)
+    yield
+
+
+app = FastAPI(title="Supervisor IA", version="0.1.0", lifespan=lifespan)
 
 ALLOWED_ORIGINS = [
     "http://localhost:5173",

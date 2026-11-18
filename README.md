@@ -88,10 +88,24 @@ flutter build apk --debug   # genera build/app/outputs/apk/debug/app-debug.apk
 
 `lib/config.dart` define `apiUrl = 'http://10.0.2.2:8000'`, la dirección con la que el emulador de Android alcanza el backend del equipo host. En un dispositivo físico o en producción, cámbiala por la IP/dominio correspondiente. La app guarda las fotos en SQLite y las sube cuando hay conexión y hay sesión activa.
 
+## Despliegue en Render
+
+El blueprint `render.yaml` define un Web Service de Python en la raíz del repo:
+
+- Build: `pip install -r requirements.txt` (el archivo incluye el `--extra-index-url` de PyTorch CPU).
+- Start: `uvicorn main:app --host 0.0.0.0 --port $PORT`.
+- Health check: `GET /`.
+- Versiones y secretos: `PYTHON_VERSION=3.12.3`; el resto de variables (`SUPABASE_URL`, `SUPABASE_SERVICE_KEY`, `SUPABASE_DB_URL`, `CLOUDINARY_*`, `FRONTEND_ORIGINS`) se declaran con `sync: false` y se completan en el dashboard de Render. `SUPABASE_DB_URL` solo hace falta si se ejecuta `init_db.py` desde Render.
+
+Los archivos `.pt` no se versionan: `app/services/analysis.py:ensure_models()` los descarga al arrancar (y vuelve a intentarlo en la primera inferencia si falló el arranque). `yolov8n.pt` se obtiene de los assets públicos de Ultralytics y `ppe_model.pt` del repo `wntrsldr/yolov8n-ppe-detection-6classes` en Hugging Face.
+
+`vendor/opencv_python-5.0.0.93-py3-none-any.whl` es un meta-paquete local con el nombre de distribución que exige Ultralytics; instala solo `opencv-python-headless`, evitando dependencias GUI/Qt en el servidor. Por eso el reinstalado manual de headless del apartado anterior no es necesario en Render.
+
 ## Verificación
 
 ```bash
 # Backend
+./.venv/bin/pip install -r requirements-dev.txt   # incluye pytest; Render no lo instala
 pytest -q
 ./.venv/bin/pip check
 

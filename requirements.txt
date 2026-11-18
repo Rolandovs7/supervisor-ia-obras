@@ -1,3 +1,6 @@
+# CPU-only PyTorch wheels live on the PyTorch index, not on plain PyPI.
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 agent-detector==2.0.0
 annotated-doc==0.0.6
 annotated-types==0.8.0
@@ -36,7 +39,6 @@ httpx2==2.16.2
 huggingface_hub==2.4.0
 hyperframe==6.1.0
 idna==3.20
-iniconfig==2.3.1
 Jinja2==3.1.6
 kiwisolver==1.5.1
 markdown-it-py==4.3.0
@@ -48,7 +50,9 @@ multidict==7.2.1
 networkx==3.7
 numpy==2.5.4
 nvidia-ml-py==13.615.71
-opencv-python==5.0.0.93
+# Local metadata-only shim: ultralytics needs the distribution name, but servers
+# must use the headless wheel so cv2 never pulls GUI/Qt libraries.
+./vendor/opencv_python-5.0.0.93-py3-none-any.whl
 opencv-python-headless==5.0.0.93
 opentelemetry-api==1.45.2
 opentelemetry-exporter-http-transport==0.66b2
@@ -63,7 +67,6 @@ passlib[bcrypt]==1.7.4
 pillow==13.0.0
 polars==2.1.0
 polars-runtime-32==2.1.0
-pluggy==1.7.0
 postgrest==2.34.1
 propcache==0.5.4
 protobuf==7.36.2
@@ -77,7 +80,6 @@ pydantic_core==2.50.4
 Pygments==2.21.0
 pyjwt==2.15.1
 pyparsing==3.3.3
-pytest==9.2.0
 python-dateutil==4.0.0
 python-dotenv==1.2.4
 python-jose==3.5.0
