@@ -29,6 +29,7 @@ app = FastAPI(title="Supervisor IA", version="0.1.0", lifespan=lifespan)
 ALLOWED_ORIGINS = [
     "http://localhost:5173",
     "http://127.0.0.1:5173",
+    "https://supervisor-ia-web.pages.dev",
     *[
         origin.strip()
         for origin in settings.cors_extra_origins.split(",")

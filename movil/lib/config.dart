@@ -1,4 +1,5 @@
-/// Backend base URL as seen from the Android emulator.
+/// Backend base URL for the deployed app.
 ///
-/// 10.0.2.2 is the emulator's alias for the host machine's localhost.
-const String apiUrl = 'http://10.0.2.2:8000';
+/// The Android emulator can use http://10.0.2.2:8000 for a local backend;
+/// production builds point to the public Render service.
+const String apiUrl = 'https://supervisor-api-g7dk.onrender.com';

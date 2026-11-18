@@ -59,13 +59,12 @@ Ambos archivos `.pt` quedan en la raíz y están ignorados por Git.
 python3.12 -m venv .venv
 ./.venv/bin/pip install --no-cache-dir -r requirements.txt \
   --extra-index-url https://download.pytorch.org/whl/cpu
-./.venv/bin/pip install --force-reinstall --no-deps opencv-python-headless==5.0.0.93
 
 ./.venv/bin/python init_db.py     # aplica el esquema en Supabase
 ./.venv/bin/python main.py        # uvicorn con reload en http://localhost:8000
 ```
 
-El segundo `pip install` garantiza que `opencv-python-headless` sea el que proporcione `cv2` (evita errores de GUI en servidores).
+El wheel local de `vendor/` garantiza que `opencv-python-headless` sea quien proporcione `cv2` (evita errores de GUI en servidores). El `--extra-index-url` ya está declarado en `requirements.txt`, así que en Render no hace falta repetirlo.
 
 ## Frontend web
 
@@ -99,7 +98,7 @@ El blueprint `render.yaml` define un Web Service de Python en la raíz del repo:
 
 Los archivos `.pt` no se versionan: `app/services/analysis.py:ensure_models()` los descarga al arrancar (y vuelve a intentarlo en la primera inferencia si falló el arranque). `yolov8n.pt` se obtiene de los assets públicos de Ultralytics y `ppe_model.pt` del repo `wntrsldr/yolov8n-ppe-detection-6classes` en Hugging Face.
 
-`vendor/opencv_python-5.0.0.93-py3-none-any.whl` es un meta-paquete local con el nombre de distribución que exige Ultralytics; instala solo `opencv-python-headless`, evitando dependencias GUI/Qt en el servidor. Por eso el reinstalado manual de headless del apartado anterior no es necesario en Render.
+`vendor/opencv_python-5.0.0.93-py3-none-any.whl` es un meta-paquete local con el nombre de distribución que exige Ultralytics; instala solo `opencv-python-headless`, evitando dependencias GUI/Qt en el servidor.
 
 ## Verificación
 

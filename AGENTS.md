@@ -49,16 +49,16 @@
 ## Python environment
 - Use `.venv/bin/python` (3.12.3) and `.venv/bin/pip` explicitly; don't rely on shell activation or system/conda Python.
 - `requirements.txt` is an alphabetized, fully pinned freeze. Keep new pins exact and alphabetized. Its `+cpu` torch wheels aren't on plain PyPI: fresh installs need `--extra-index-url https://download.pytorch.org/whl/cpu`.
-- `ultralytics` requires `opencv-python`, so both opencv pins stay. **Use headless in code**: after any `pip install -r requirements.txt` re-run `./.venv/bin/pip install --force-reinstall --no-deps opencv-python-headless==5.0.0.93` so headless owns `cv2`; verify `GUI: NONE` via `cv2.getBuildInformation()`. Installing `supabase` downgrades `websockets` to 15.0.1.
+- `ultralytics` requires the `opencv-python` distribution name; `requirements.txt` installs the local metadata-only wheel from `vendor/` plus `opencv-python-headless`, so no GUI `cv2` is installed. Verify with `cv2.getBuildInformation()` → `GUI: NONE`. Installing `supabase` downgrades `websockets` to 15.0.1.
 
 ## CORS
-- `main.py` installs `CORSMiddleware` with explicit origins: `http://localhost:5173`, `http://127.0.0.1:5173` plus any comma-separated `FRONTEND_ORIGINS` env var (read via `app/core/config.py`) for the deployed frontend. Never use `allow_origins=["*"]` together with `allow_credentials=True`.
+- `main.py` installs `CORSMiddleware` with explicit origins: `http://localhost:5173`, `http://127.0.0.1:5173`, the production Cloudflare Pages URL `https://supervisor-ia-web.pages.dev`, plus any comma-separated `FRONTEND_ORIGINS` env var (read via `app/core/config.py`) for extra origins. Never use `allow_origins=["*"]` together with `allow_credentials=True`.
 - `allow_methods=["*"]`, `allow_headers=["*"]`, `allow_credentials=True`. Keep the middleware registered before the routers so `OPTIONS /login` is answered with 200 instead of 405.
 
 ## Frontend
 - `frontend/` is a Vite + React 19 + TypeScript + TailwindCSS 3 app. Use `npm` from that directory (`npm install`, `npm run build`, `npm run lint`); `npm run build` runs `tsc -b && vite build` and must stay clean.
 - `tsconfig.app.json` enables `verbatimModuleSyntax`, `erasableSyntaxOnly` and `noUnusedLocals`: use `import type`, no enums/parameter properties, and avoid unused symbols.
-- API base URL comes from `VITE_API_URL` (default `http://localhost:8000`); `frontend/.env.example` documents it. The JWT is stored in `localStorage` and injected by `src/lib/api.ts`.
+- API base URL comes from `VITE_API_URL` (default `http://localhost:8000`); `frontend/.env.example` documents it and `frontend/.env.production` points to the Render service `https://supervisor-api-g7dk.onrender.com` (public URL, not a secret, so it is un-ignored in the root `.gitignore`). The JWT is stored in `localStorage` and injected by `src/lib/api.ts`.
 - Auth/Theme/WebSocket live in context providers; `useWebSocket` reconnects with exponential backoff (max 30s). Dark theme is the default.
 - The dashboard reads `GET /metrics` (protected) added to the backend for the three metric cards. `frontend/node_modules`, `frontend/dist` and `frontend/.env` are gitignored.
 

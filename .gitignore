@@ -1,8 +1,9 @@
 # --- Credenciales y entornos -------------------------------------------------
-# Nunca versionar .env reales; sí se versionan los ejemplos.
+# Nunca versionar .env reales; sí se versionan los ejemplos y la URL pública de producción.
 .env
 .env.*
 !**/.env.example
+!frontend/.env.production
 
 # --- Python ------------------------------------------------------------------
 .venv/
