@@ -24,6 +24,7 @@ frontend/dist/
 # --- Flutter / Dart -----------------------------------------------------------
 movil/build/
 movil/.dart_tool/
+movil/android/.kotlin/
 movil/.flutter-plugins
 movil/.flutter-plugins-dependencies
 movil/.pub-cache/
