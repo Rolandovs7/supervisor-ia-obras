@@ -18,7 +18,14 @@ import { Card } from '../components/ui/Card'
 import { Select } from '../components/ui/Select'
 import { Toast } from '../components/ui/Toast'
 import { useAlertSocket } from '../context/WebSocketContext'
-import { alertasApi, errorMessage, metricsApi, obrasApi, uploadImage } from '../lib/api'
+import {
+  alertasApi,
+  camarasApi,
+  errorMessage,
+  metricsApi,
+  obrasApi,
+  uploadImage,
+} from '../lib/api'
 import type { Alerta, Metrics, Obra } from '../lib/types'
 import { cn, formatDate } from '../lib/utils'
 
@@ -64,6 +71,7 @@ export function Dashboard() {
   const [obraId, setObraId] = useState('')
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [capturing, setCapturing] = useState(false)
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(
     null,
   )
@@ -125,6 +133,22 @@ export function Dashboard() {
     event.preventDefault()
     setDragging(false)
     acceptFile(event.dataTransfer.files[0])
+  }
+
+  const handleLocalCapture = async () => {
+    setCapturing(true)
+    try {
+      await camarasApi.capturar(obraId || undefined)
+      setToast({ message: 'Imagen capturada y analizada', tone: 'success' })
+      setMetrics(await metricsApi.get())
+    } catch (cause) {
+      setToast({
+        message: errorMessage(cause, 'No se pudo capturar desde la cámara local.'),
+        tone: 'error',
+      })
+    } finally {
+      setCapturing(false)
+    }
   }
 
   const handleUpload = async () => {
@@ -294,6 +318,21 @@ export function Dashboard() {
             >
               Analizar imagen
             </Button>
+          </div>
+
+          <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
+            <Button
+              variant="outline"
+              onClick={() => void handleLocalCapture()}
+              loading={capturing}
+              leftIcon={<Camera className="h-4 w-4" />}
+              className="h-11 w-full"
+            >
+              Capturar desde Cámara Local
+            </Button>
+            <p className="muted mt-2 text-[11px]">
+              Simula una cámara IP conectada al servidor. La alerta llegará por WebSocket.
+            </p>
           </div>
 
           {obras.length === 0 && (

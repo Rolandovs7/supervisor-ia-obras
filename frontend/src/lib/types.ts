@@ -44,3 +44,8 @@ export interface Metrics {
   alertas_pendientes: number
   imagenes_procesadas: number
 }
+
+export interface CamaraCaptureResponse {
+  filename: string
+  secure_url: string
+}

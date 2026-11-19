@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.alertas import router as alertas_router
 from app.api.auth import router as auth_router
+from app.api.camaras import router as camaras_router
 from app.api.obras import router as obras_router
 from app.api.metrics import router as metrics_router
 from app.api.routes import router as api_router
@@ -53,6 +54,7 @@ async def healthcheck() -> dict[str, str]:
 
 
 app.include_router(auth_router)
+app.include_router(camaras_router)
 app.include_router(api_router)
 app.include_router(obras_router)
 app.include_router(alertas_router)

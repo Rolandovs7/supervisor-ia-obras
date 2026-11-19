@@ -15,6 +15,13 @@ class UploadResponse(BaseModel):
     obra_id: str | None = None
 
 
+class CamaraCaptureResponse(BaseModel):
+    """Result of a local-camera capture after the analysis has completed."""
+
+    filename: str
+    secure_url: str
+
+
 class ObraCreate(BaseModel):
     """Payload for creating a construction site."""
 

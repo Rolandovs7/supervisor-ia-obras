@@ -1,7 +1,14 @@
 import axios from 'axios'
 
 import { clearSession, getToken } from './auth'
-import type { Alerta, LoginResponse, Metrics, Obra, ObraInput } from './types'
+import type {
+  Alerta,
+  CamaraCaptureResponse,
+  LoginResponse,
+  Metrics,
+  Obra,
+  ObraInput,
+} from './types'
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
 
@@ -101,6 +108,15 @@ export const alertasApi = {
 export const metricsApi = {
   async get(): Promise<Metrics> {
     const { data } = await api.get<Metrics>('/metrics')
+    return data
+  },
+}
+
+export const camarasApi = {
+  async capturar(obraId?: string): Promise<CamaraCaptureResponse> {
+    const { data } = await api.get<CamaraCaptureResponse>('/camaras/capturar', {
+      params: obraId ? { obra_id: obraId } : undefined,
+    })
     return data
   },
 }

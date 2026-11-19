@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## Layout
-- FastAPI app: `main.py` owns the app and `GET /` healthcheck; `app/api/routes.py` has `POST /upload` and `GET /results/{filename}`. Other routers: `app/api/auth.py` (`/register`, `/login`), `app/api/obras.py` (`/obras`), `app/api/alertas.py` (`/alertas`), `app/api/websockets.py` (`/ws/alertas`). Add endpoints to a router, not `main.py`.
+- FastAPI app: `main.py` owns the app and `GET /` healthcheck; `app/api/routes.py` has `POST /upload` and `GET /results/{filename}`. Other routers: `app/api/auth.py` (`/register`, `/login`), `app/api/camaras.py` (`GET /camaras/capturar`), `app/api/obras.py` (`/obras`), `app/api/alertas.py` (`/alertas`), `app/api/websockets.py` (`/ws/alertas`). Add endpoints to a router, not `main.py`.
 - `app/services/`: `storage.py` (temp files + Cloudinary upload), `analysis.py` (YOLOv8 + persistence), `database.py` (Supabase client + CRUD). Schemas in `app/models/schemas.py`, env settings in `app/core/config.py`.
 - `init_db.py` is a one-off DDL bootstrap (psql, idempotent); `.env` and `*.pt` are gitignored.
 
@@ -15,6 +15,7 @@
 ## Obras and alerts
 - `POST /obras` accepts `nombre`, `ubicacion`, `fecha_inicio`, `fecha_fin` (dates are converted to ISO strings before hitting PostgREST); `GET /obras` lists and `GET /obras/{obra_id}` returns 404 when missing.
 - `POST /upload` takes an optional `obra_id` from form data or query string; it is stored on the `imagenes` row and forwarded to `analyze_image()` so the generated alert carries it too.
+- `GET /camaras/capturar?obra_id=...` (protected) reads one frame from `cv2.VideoCapture(0)` in a worker thread, encodes it as JPEG into `/tmp`, registers the `imagenes` row and awaits `analyze_image()` in a worker thread so it can return `{"filename", "secure_url"}` (the Cloudinary URL). A closed/unreadable camera returns 503. Tests patch `camaras.cv2.VideoCapture` with a fake camera; the standard mocked pipeline supplies the models and Cloudinary.
 - `create_alerta(tipo, descripcion, nivel, obra_id, analisis_id, imagen_id)` in `database.py` is the alert seam. YOLO + people detected → `tipo='seguridad'`, `descripcion='Personas detectadas en la imagen'`, `nivel='baja'`, `resuelta=False`. `GET /alertas?obra_id=...` filters; `PUT /alertas/{id}/resolver` sets `resuelta=true` (404 if the row does not exist).
 - `AlertaResponse` must include `created_at` — the DB returns it via `select("*")`, but FastAPI drops any field absent from `response_model`. The frontend formats it with `new Date(value).toLocaleString('es-PE', …)` in `src/lib/utils.ts`.
 
@@ -60,7 +61,7 @@
 - `tsconfig.app.json` enables `verbatimModuleSyntax`, `erasableSyntaxOnly` and `noUnusedLocals`: use `import type`, no enums/parameter properties, and avoid unused symbols.
 - API base URL comes from `VITE_API_URL` (default `http://localhost:8000`); `frontend/.env.example` documents it and `frontend/.env.production` points to the Render service `https://supervisor-api-g7dk.onrender.com` (public URL, not a secret, so it is un-ignored in the root `.gitignore`). The JWT is stored in `localStorage` and injected by `src/lib/api.ts`.
 - Auth/Theme/WebSocket live in context providers; `useWebSocket` reconnects with exponential backoff (max 30s). Dark theme is the default.
-- The dashboard reads `GET /metrics` (protected) added to the backend for the three metric cards. `frontend/node_modules`, `frontend/dist` and `frontend/.env` are gitignored.
+- The dashboard reads `GET /metrics` (protected) added to the backend for the three metric cards. `camarasApi.capturar()` calls `GET /camaras/capturar` (with the selected `obra_id`) from the "Capturar desde Cámara Local" button and shows "Imagen capturada y analizada"; alerts arrive via the existing WebSocket feed. `frontend/node_modules`, `frontend/dist` and `frontend/.env` are gitignored.
 
 ## Mobile app (Flutter)
 - `movil/` was created from the repo root with `flutter create --org com.supervisor_ia movil` (Flutter 3.47.2 / Dart 3.13.2). Use plain `flutter`/`dart` commands from that directory; `flutter pub get`, `flutter analyze` and `flutter build apk --debug` must stay clean.
@@ -76,5 +77,5 @@
 - CI: `.github/workflows/build_apk.yml` builds the APK on pushes to `main` that touch `movil/**` (checkout@v4, setup-java@v4 temurin 17, subosito/flutter-action@v2 stable, `flutter pub get`, `flutter build apk --release`, upload-artifact@v4). The artifact path covers both `build/app/outputs/flutter-apk/` and the legacy `build/app/outputs/apk/release/`.
 
 ## Run / verify
-- Start with `./.venv/bin/python main.py` (uvicorn + reload on :8000). Run `pytest -v` (43 tests); `tests/conftest.py` fakes the Supabase client (including Auth), the YOLO model and the Cloudinary uploader is monkeypatched, so tests need no network. `tests/test_websockets.py` uses `TestClient.websocket_connect`.
+- Start with `./.venv/bin/python main.py` (uvicorn + reload on :8000). Run `pytest -v` (51 tests); `tests/conftest.py` fakes the Supabase client (including Auth), the YOLO model and the Cloudinary uploader is monkeypatched, so tests need no network. `tests/test_camaras.py` patches `cv2.VideoCapture`; `tests/test_websockets.py` uses `TestClient.websocket_connect`.
 - Check the environment with `./.venv/bin/pip check`. No CI or lint/typecheck config yet.
