@@ -84,6 +84,9 @@
 
 - CI: `.github/workflows/build_apk.yml` builds the APK on pushes to `main` that touch `movil/**` (checkout@v4, setup-java@v4 temurin 17, subosito/flutter-action@v2 stable, `flutter pub get`, `flutter build apk --release`, upload-artifact@v4). The artifact path covers both `build/app/outputs/flutter-apk/` and the legacy `build/app/outputs/apk/release/`.
 
+## Documentación Scrum
+- `generar_documento.py` (usa `python-docx` + `lxml`, ambos pinnados en `requirements.txt`) regenera `Documentacion_Scrum_SupervisorIA.docx` en la raíz con: portada UAGRM/Grupo 14, Sprint 0 (R-1), Product Backlog (F3), Sprints 1–3 con sus Sprint Backlogs (F5), Historias de Usuario (F4) y espacios "[Insertar Diagrama UML aquí]". El `.docx` está en `.gitignore`; solo se versiona el generador.
+
 ## Run / verify
 - Start with `./.venv/bin/python main.py` (uvicorn + reload on :8000). Run `pytest -v` (69 tests); `tests/conftest.py` fakes the Supabase client (including Auth), the YOLO model and the Cloudinary uploader is monkeypatched, so tests need no network. `tests/test_api.py:_mock_pipeline(..., material_classes=...)` injects fake COCO material boxes; `tests/test_camaras.py` patches `cv2.VideoCapture`; `tests/test_websockets.py` uses `TestClient.websocket_connect`.
 - Check the environment with `./.venv/bin/pip check`. No CI or lint/typecheck config yet.
