@@ -9,6 +9,7 @@ import {
   Images,
   Package,
   Radio,
+  RefreshCw,
   X,
   type LucideIcon,
 } from 'lucide-react'
@@ -38,7 +39,17 @@ const accentStyles = {
   violet: 'bg-violet-500/10 text-violet-500',
 }
 
+type FacingMode = 'user' | 'environment'
+
 const USB_CAMERA_PATTERN = /xhc|imc networks/i
+const MOBILE_PATTERN = /Android|iPhone|iPad|iPod|Mobile/i
+
+function mensajeErrorCamara(cause: unknown): string {
+  if (cause instanceof DOMException && cause.name === 'NotAllowedError') {
+    return 'Permiso de cámara denegado. Habilítalo en el navegador.'
+  }
+  return cause instanceof Error ? cause.message : 'Error desconocido'
+}
 
 function seleccionarCamaraUsb(
   dispositivos: MediaDeviceInfo[],
@@ -83,8 +94,15 @@ export function Dashboard() {
   const [obraId, setObraId] = useState('')
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [esMovil] = useState(
+    () => typeof navigator !== 'undefined' && MOBILE_PATTERN.test(navigator.userAgent),
+  )
+  const [facingMode, setFacingMode] = useState<FacingMode>(() =>
+    esMovil ? 'environment' : 'user',
+  )
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraLoading, setCameraLoading] = useState(false)
+  const [flipping, setFlipping] = useState(false)
   const [camaraSeleccionada, setCamaraSeleccionada] =
     useState<MediaDeviceInfo | null>(null)
   const [capturing, setCapturing] = useState(false)
@@ -175,61 +193,98 @@ export function Dashboard() {
     setCameraActive(false)
   }
 
+  const abrirCamara = async (modo: FacingMode) => {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error('Tu navegador no permite acceder a la cámara.')
+    }
+
+    // On phones the facing mode wins: the browser selects the front/rear
+    // camera and ignores any USB device reported by enumerateDevices().
+    if (esMovil) {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { exact: modo } },
+      })
+      streamRef.current = stream
+      setCamaraSeleccionada(null)
+      return
+    }
+
+    if (!navigator.mediaDevices.enumerateDevices) {
+      throw new Error('Tu navegador no permite enumerar cámaras.')
+    }
+    const dispositivos = await navigator.mediaDevices.enumerateDevices()
+    let camaraUsb = seleccionarCamaraUsb(dispositivos)
+
+    // Chrome hides device labels until camera permission is granted. Open a
+    // throwaway stream only in that case, then enumerate again with labels.
+    if (
+      !camaraUsb &&
+      dispositivos.some(
+        (dispositivo) => dispositivo.kind === 'videoinput' && !dispositivo.label,
+      )
+    ) {
+      const permiso = await navigator.mediaDevices.getUserMedia({ video: {} })
+      permiso.getTracks().forEach((track) => track.stop())
+      camaraUsb = seleccionarCamaraUsb(
+        await navigator.mediaDevices.enumerateDevices(),
+      )
+    }
+
+    const constraints: MediaStreamConstraints = camaraUsb?.deviceId
+      ? { video: { deviceId: { exact: camaraUsb.deviceId } } }
+      : { video: true }
+    const stream = await navigator.mediaDevices.getUserMedia(constraints)
+    streamRef.current = stream
+    setCamaraSeleccionada(camaraUsb)
+  }
+
   const activarCamara = async () => {
     if (cameraActive) {
       detenerCamara()
       return
     }
-    if (
-      !navigator.mediaDevices?.enumerateDevices ||
-      !navigator.mediaDevices.getUserMedia
-    ) {
+
+    setCameraLoading(true)
+    try {
+      await abrirCamara(facingMode)
+      setCameraActive(true)
+      setToast(null)
+    } catch (cause) {
       setToast({
-        message: 'Tu navegador no permite acceder a la cámara.',
+        message: `No se pudo activar la cámara: ${mensajeErrorCamara(cause)}`,
         tone: 'error',
+      })
+    } finally {
+      setCameraLoading(false)
+    }
+  }
+
+  const voltearCamara = async () => {
+    const estabaActiva = cameraActive
+    detenerCamara()
+    const nuevoModo: FacingMode = facingMode === 'user' ? 'environment' : 'user'
+    setFacingMode(nuevoModo)
+
+    if (!estabaActiva) {
+      setToast({
+        message: `Cámara ${nuevoModo === 'user' ? 'frontal' : 'trasera'} seleccionada. Actívala para verla.`,
+        tone: 'success',
       })
       return
     }
 
-    setCameraLoading(true)
+    setFlipping(true)
     try {
-      const dispositivos = await navigator.mediaDevices.enumerateDevices()
-      let camaraUsb = seleccionarCamaraUsb(dispositivos)
-
-      // Chrome hides device labels until camera permission is granted. Open a
-      // throwaway stream only in that case, then enumerate again with labels.
-      if (
-        !camaraUsb &&
-        dispositivos.some(
-          (dispositivo) =>
-            dispositivo.kind === 'videoinput' && !dispositivo.label,
-        )
-      ) {
-        const permiso = await navigator.mediaDevices.getUserMedia({ video: {} })
-        permiso.getTracks().forEach((track) => track.stop())
-        camaraUsb = seleccionarCamaraUsb(
-          await navigator.mediaDevices.enumerateDevices(),
-        )
-      }
-
-      const constraints: MediaStreamConstraints = camaraUsb?.deviceId
-        ? { video: { deviceId: { exact: camaraUsb.deviceId } } }
-        : { video: true }
-      const stream = await navigator.mediaDevices.getUserMedia(constraints)
-      streamRef.current = stream
-      setCamaraSeleccionada(camaraUsb)
+      await abrirCamara(nuevoModo)
       setCameraActive(true)
       setToast(null)
     } catch (cause) {
-      const detalle =
-        cause instanceof DOMException && cause.name === 'NotAllowedError'
-          ? 'Permiso de cámara denegado. Habilítalo en el navegador.'
-          : cause instanceof Error
-            ? cause.message
-            : 'Error desconocido'
-      setToast({ message: `No se pudo activar la cámara: ${detalle}`, tone: 'error' })
+      setToast({
+        message: `No se pudo voltear la cámara: ${mensajeErrorCamara(cause)}`,
+        tone: 'error',
+      })
     } finally {
-      setCameraLoading(false)
+      setFlipping(false)
     }
   }
 
@@ -507,7 +562,9 @@ export function Dashboard() {
                   cameraActive && 'animate-pulse text-emerald-500',
                 )}
               />
-              {cameraActive ? 'Cámara activa' : 'Cámara apagada'}
+              {cameraActive
+                ? `Cámara activa · ${facingMode === 'user' ? 'Frontal' : 'Trasera'}`
+                : 'Cámara apagada'}
             </span>
           }
         >
@@ -539,6 +596,15 @@ export function Dashboard() {
                 {cameraActive ? 'Desactivar Cámara' : 'Activar Cámara'}
               </Button>
               <Button
+                variant="outline"
+                onClick={() => void voltearCamara()}
+                loading={flipping}
+                disabled={cameraLoading}
+                leftIcon={<RefreshCw className="h-4 w-4" />}
+              >
+                Voltear Cámara
+              </Button>
+              <Button
                 onClick={() => void tomarFotoCamara()}
                 loading={capturing}
                 disabled={!cameraActive}
@@ -550,7 +616,9 @@ export function Dashboard() {
             <p className="muted text-[11px]">
               {camaraSeleccionada?.label
                 ? `Cámara seleccionada: ${camaraSeleccionada.label}`
-                : 'Usando la cámara por defecto (no se detectó una USB).'}
+                : esMovil
+                  ? `Cámara ${facingMode === 'user' ? 'frontal' : 'trasera'} del dispositivo`
+                  : 'Usando la cámara por defecto (no se detectó una USB).'}
             </p>
             <p className="muted text-[11px]">
               El frame se envía a <span className="font-mono">/upload</span> con la obra
