@@ -43,7 +43,7 @@ Future<int> sincronizarFotos() async {
       ),
     );
 
-    final response = await request.send();
+    final response = await apiClient.send(request).timeout(apiTimeout);
     if (response.statusCode == 200) {
       await marcarComoSincronizada(foto.id!);
       sincronizadas++;

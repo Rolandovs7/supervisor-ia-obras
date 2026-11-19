@@ -1,11 +1,7 @@
 // Login screen: email/password form and JWT storage.
 
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
-import '../config.dart';
 import '../services/auth_service.dart';
 import 'captura_screen.dart';
 
@@ -36,23 +32,10 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      final response = await http.post(
-        Uri.parse('$apiUrl/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'email': _emailController.text.trim(),
-          'password': _passwordController.text,
-        }),
+      await iniciarSesion(
+        _emailController.text.trim(),
+        _passwordController.text,
       );
-      if (response.statusCode != 200) {
-        throw StateError('No se pudo iniciar sesión (${response.statusCode}).');
-      }
-      final body = jsonDecode(response.body) as Map<String, dynamic>;
-      final token = body['access_token'] as String?;
-      if (token == null || token.isEmpty) {
-        throw StateError('El servidor no devolvió un token.');
-      }
-      await guardarToken(token);
       if (!mounted) return;
       Navigator.of(context).pushReplacement(
         MaterialPageRoute<void>(builder: (_) => const CapturaScreen()),
