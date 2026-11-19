@@ -49,11 +49,14 @@ CREATE TABLE IF NOT EXISTS imagenes (
 ALTER TABLE imagenes ADD COLUMN IF NOT EXISTS temp_path text;
 ALTER TABLE imagenes ADD COLUMN IF NOT EXISTS secure_url text;
 
+ALTER TABLE analisis ADD COLUMN IF NOT EXISTS material_count integer NOT NULL DEFAULT 0;
+
 CREATE TABLE IF NOT EXISTS analisis (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     imagen_id uuid NOT NULL REFERENCES imagenes(id) ON DELETE CASCADE,
     modelo text NOT NULL,
     person_count integer NOT NULL DEFAULT 0,
+    material_count integer NOT NULL DEFAULT 0,
     detections jsonb NOT NULL DEFAULT '[]'::jsonb,
     created_at timestamptz NOT NULL DEFAULT now()
 );

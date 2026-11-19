@@ -13,6 +13,9 @@ def test_metrics(fake_supabase, auth_headers):
     fake_supabase.store["imagenes"].append({"id": "imagenes-2"})
     fake_supabase.store["alertas"].append({"id": "alertas-1", "resuelta": False})
     fake_supabase.store["alertas"].append({"id": "alertas-2", "resuelta": True})
+    fake_supabase.store["analisis"].append({"id": "analisis-1", "material_count": 2})
+    fake_supabase.store["analisis"].append({"id": "analisis-2", "material_count": 3})
+    fake_supabase.store["analisis"].append({"id": "analisis-3"})
 
     response = client.get("/metrics", headers=auth_headers)
     assert response.status_code == 200
@@ -20,6 +23,7 @@ def test_metrics(fake_supabase, auth_headers):
         "total_obras": 1,
         "alertas_pendientes": 1,
         "imagenes_procesadas": 1,
+        "materiales_detectados": 5,
     }
 
 

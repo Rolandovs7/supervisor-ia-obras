@@ -23,6 +23,14 @@ PPE_NAMES = {
 }
 PPE_INDEX = {name.lower(): index for index, name in PPE_NAMES.items()}
 
+MATERIAL_NAMES = {
+    7: "truck",
+    24: "backpack",
+    28: "suitcase",
+    44: "bottle",
+}
+MATERIAL_INDEX = {name: index for index, name in MATERIAL_NAMES.items()}
+
 
 class _FakeBox:
     def __init__(self, cls, conf=0.97, xyxy=(3.0, 4.0, 20.0, 21.0)):
@@ -45,8 +53,10 @@ class _FakeModel:
         return self.results
 
 
-def _person_result(count=1):
-    return _FakeResult({0: "person"}, [_FakeBox(0) for _ in range(count)])
+def _person_result(count=1, material_classes=()):
+    boxes = [_FakeBox(0) for _ in range(count)]
+    boxes.extend(_FakeBox(MATERIAL_INDEX[name]) for name in material_classes)
+    return _FakeResult({0: "person", **MATERIAL_NAMES}, boxes)
 
 
 def _ppe_result(*classes):
@@ -69,8 +79,17 @@ def _upload(filename: str, headers: dict, **kwargs):
     )
 
 
-def _mock_pipeline(monkeypatch, person_count=1, ppe_classes=("helmet", "Vest")):
-    monkeypatch.setattr(analysis, "_model", _FakeModel([_person_result(person_count)]))
+def _mock_pipeline(
+    monkeypatch,
+    person_count=1,
+    ppe_classes=("helmet", "Vest"),
+    material_classes=(),
+):
+    monkeypatch.setattr(
+        analysis,
+        "_model",
+        _FakeModel([_person_result(person_count, material_classes)]),
+    )
     monkeypatch.setattr(analysis, "_ppe_model", _FakeModel([_ppe_result(*ppe_classes)]))
     monkeypatch.setattr(analysis, "upload_to_cloudinary", lambda path: SECURE_URL)
 
@@ -101,6 +120,7 @@ def test_results(monkeypatch, fake_supabase, auth_headers):
     response = client.get("/results/results_test.png", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["person_count"] == 1
+    assert response.json()["material_count"] == 0
     assert response.json()["detections"][0]["class"] == "person"
     assert response.json()["secure_url"] == SECURE_URL
 
@@ -112,6 +132,27 @@ def test_results(monkeypatch, fake_supabase, auth_headers):
     assert alerta["descripcion"] == "Personas detectadas en la imagen"
     assert alerta["nivel"] == "baja"
     assert alerta["resuelta"] is False
+
+
+def test_materiales_detectados(monkeypatch, fake_supabase, auth_headers):
+    _mock_pipeline(
+        monkeypatch,
+        material_classes=("truck", "bottle", "suitcase"),
+    )
+    assert _upload("materiales.png", auth_headers).status_code == 200
+
+    response = client.get("/results/materiales.png", headers=auth_headers)
+    payload = response.json()
+    assert payload["material_count"] == 3
+    assert [item["class"] for item in payload["detections"]] == [
+        "person",
+        "truck",
+        "bottle",
+        "suitcase",
+        "helmet",
+        "vest",
+    ]
+    assert fake_supabase.store["analisis"][0]["material_count"] == 3
 
 
 def test_upload_with_obra_id_form(monkeypatch, fake_supabase, auth_headers):

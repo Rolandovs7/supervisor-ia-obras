@@ -7,6 +7,7 @@ import {
   CloudUpload,
   FileImage,
   Images,
+  Package,
   Radio,
   X,
   type LucideIcon,
@@ -27,13 +28,14 @@ interface MetricCardProps {
   value: number | null
   hint: string
   icon: LucideIcon
-  accent: 'blue' | 'amber' | 'emerald'
+  accent: 'blue' | 'amber' | 'emerald' | 'violet'
 }
 
 const accentStyles = {
   blue: 'bg-accent-500/10 text-accent-500',
   amber: 'bg-amber-500/10 text-amber-500',
   emerald: 'bg-emerald-500/10 text-emerald-500',
+  violet: 'bg-violet-500/10 text-violet-500',
 }
 
 const USB_CAMERA_PATTERN = /xhc|imc networks/i
@@ -320,7 +322,7 @@ export function Dashboard() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <MetricCard
           label="Total obras"
           value={metrics?.total_obras ?? null}
@@ -341,6 +343,13 @@ export function Dashboard() {
           hint="Analizadas por el modelo"
           icon={Images}
           accent="emerald"
+        />
+        <MetricCard
+          label="Materiales Detectados"
+          value={metrics?.materiales_detectados ?? null}
+          hint="Materiales y maquinaria de obra"
+          icon={Package}
+          accent="violet"
         />
       </div>
 

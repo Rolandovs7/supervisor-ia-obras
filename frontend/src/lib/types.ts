@@ -43,6 +43,7 @@ export interface Metrics {
   total_obras: number
   alertas_pendientes: number
   imagenes_procesadas: number
+  materiales_detectados: number
 }
 
 export interface CamaraCaptureResponse {

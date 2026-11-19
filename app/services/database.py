@@ -43,10 +43,14 @@ def get_metrics() -> dict[str, int]:
     obras = client.table("obras").select("id").execute().data
     alertas = client.table("alertas").select("id,resuelta").execute().data
     imagenes = client.table("imagenes").select("id,secure_url").execute().data
+    analisis = client.table("analisis").select("material_count").execute().data
     return {
         "total_obras": len(obras),
         "alertas_pendientes": sum(not alerta.get("resuelta", False) for alerta in alertas),
         "imagenes_procesadas": sum(bool(image.get("secure_url")) for image in imagenes),
+        "materiales_detectados": sum(
+            int(row.get("material_count") or 0) for row in analisis
+        ),
     }
 
 
@@ -99,6 +103,7 @@ def save_analisis(imagen_id: str, payload: dict[str, Any]) -> dict[str, Any]:
             "imagen_id": imagen_id,
             "modelo": payload["model"],
             "person_count": payload["person_count"],
+            "material_count": payload.get("material_count", 0),
             "detections": payload["detections"],
         },
     )

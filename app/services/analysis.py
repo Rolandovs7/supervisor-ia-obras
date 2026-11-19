@@ -25,6 +25,8 @@ MODEL_URL = (
 PPE_REPO_ID = "wntrsldr/yolov8n-ppe-detection-6classes"
 PPE_HUB_FILENAME = "best.pt"
 PERSON_CLASSES = {"person"}
+MATERIAL_CLASSES = {"truck", "suitcase", "backpack", "bottle"}
+BASE_CLASSES = PERSON_CLASSES | MATERIAL_CLASSES
 HELMET_CLASSES = {"helmet", "hard_hat"}
 VEST_CLASSES = {"vest", "safety_vest"}
 PPE_CLASSES = HELMET_CLASSES | VEST_CLASSES
@@ -137,8 +139,9 @@ def analyze_image(
 
         detections: list[dict[str, Any]] = []
         for result in results:
-            detections.extend(_extract(result, PERSON_CLASSES))
+            detections.extend(_extract(result, BASE_CLASSES))
         person_count = sum(d["class"] in PERSON_CLASSES for d in detections)
+        material_count = sum(d["class"] in MATERIAL_CLASSES for d in detections)
 
         # Run the PPE head on the same image; a failure must not kill the
         # person analysis, but it disables the missing-PPE alert logic.
@@ -162,6 +165,7 @@ def analyze_image(
             "model": MODEL_NAME,
             "ppe_model": PPE_MODEL_NAME,
             "person_count": person_count,
+            "material_count": material_count,
             "detections": detections,
         }
         print(json.dumps(payload, indent=2), flush=True)

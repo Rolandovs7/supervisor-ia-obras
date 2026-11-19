@@ -35,11 +35,14 @@ def test_save_and_get_analisis(fake_supabase):
     payload = {
         "model": "yolov8n.pt",
         "person_count": 2,
+        "material_count": 3,
         "detections": [{"class": "person", "confidence": 0.9, "bbox": [0, 0, 1, 1]}],
     }
     saved = database.save_analisis(imagen["id"], payload)
     found = database.get_analisis_by_imagen(imagen["id"])
     assert found == [saved]
+    assert found[0]["person_count"] == 2
+    assert found[0]["material_count"] == 3
     assert found[0]["detections"] == payload["detections"]
 
 
