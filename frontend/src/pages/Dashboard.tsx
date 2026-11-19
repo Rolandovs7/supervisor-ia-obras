@@ -36,6 +36,27 @@ const accentStyles = {
   emerald: 'bg-emerald-500/10 text-emerald-500',
 }
 
+const USB_CAMERA_PATTERN =
+  /usb|webcam|logitech|elgato|creative|brio|c9\d{2}|hd pro|basler|hikvision|dahua|axis/i
+const INTEGRATED_CAMERA_PATTERN =
+  /integrated|built[- ]?in|facetime|isight|laptop|notebook|internal/i
+
+function seleccionarCamaraUsb(
+  dispositivos: MediaDeviceInfo[],
+): MediaDeviceInfo | null {
+  const entradas = dispositivos.filter(
+    (dispositivo) => dispositivo.kind === 'videoinput',
+  )
+  return (
+    entradas.find(
+      (dispositivo) =>
+        Boolean(dispositivo.deviceId) &&
+        USB_CAMERA_PATTERN.test(dispositivo.label) &&
+        !INTEGRATED_CAMERA_PATTERN.test(dispositivo.label),
+    ) ?? null
+  )
+}
+
 function MetricCard({ label, value, hint, icon: Icon, accent }: MetricCardProps) {
   return (
     <div className="surface surface-hover relative overflow-hidden rounded-2xl p-5">
@@ -66,6 +87,8 @@ export function Dashboard() {
   const [uploading, setUploading] = useState(false)
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraLoading, setCameraLoading] = useState(false)
+  const [camaraSeleccionada, setCamaraSeleccionada] =
+    useState<MediaDeviceInfo | null>(null)
   const [capturing, setCapturing] = useState(false)
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(
     null,
@@ -159,7 +182,10 @@ export function Dashboard() {
       detenerCamara()
       return
     }
-    if (!navigator.mediaDevices?.getUserMedia) {
+    if (
+      !navigator.mediaDevices?.enumerateDevices ||
+      !navigator.mediaDevices.getUserMedia
+    ) {
       setToast({
         message: 'Tu navegador no permite acceder a la cámara.',
         tone: 'error',
@@ -169,8 +195,31 @@ export function Dashboard() {
 
     setCameraLoading(true)
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      const dispositivos = await navigator.mediaDevices.enumerateDevices()
+      let seleccionada = seleccionarCamaraUsb(dispositivos)
+
+      // Chrome hides device labels until camera permission is granted. Open a
+      // throwaway stream only in that case, then enumerate again with labels.
+      if (
+        !seleccionada &&
+        dispositivos.some(
+          (dispositivo) =>
+            dispositivo.kind === 'videoinput' && !dispositivo.label,
+        )
+      ) {
+        const permiso = await navigator.mediaDevices.getUserMedia({ video: {} })
+        permiso.getTracks().forEach((track) => track.stop())
+        seleccionada = seleccionarCamaraUsb(
+          await navigator.mediaDevices.enumerateDevices(),
+        )
+      }
+
+      const constraints: MediaStreamConstraints = seleccionada?.deviceId
+        ? { video: { deviceId: { exact: seleccionada.deviceId } } }
+        : { video: true }
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
       streamRef.current = stream
+      setCamaraSeleccionada(seleccionada)
       setCameraActive(true)
       setToast(null)
     } catch (cause) {
@@ -493,6 +542,11 @@ export function Dashboard() {
                 Tomar Foto
               </Button>
             </div>
+            <p className="muted text-[11px]">
+              {camaraSeleccionada?.label
+                ? `Cámara seleccionada: ${camaraSeleccionada.label}`
+                : 'Usando la cámara por defecto (no se detectó una USB).'}
+            </p>
             <p className="muted text-[11px]">
               El frame se envía a <span className="font-mono">/upload</span> con la obra
               seleccionada. La alerta llegará por WebSocket.
