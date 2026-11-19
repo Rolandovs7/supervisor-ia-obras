@@ -1,6 +1,7 @@
 # CPU-only PyTorch wheels live on the PyTorch index, not on plain PyPI.
 --extra-index-url https://download.pytorch.org/whl/cpu
 
+absl-py==2.5.1
 agent-detector==2.0.0
 annotated-doc==0.0.6
 annotated-types==0.8.0
@@ -24,6 +25,7 @@ fastapi-cli==0.0.34
 fastapi-cloud-cli==0.28.0
 fastar==0.12.0
 filelock==4.2.4
+flatbuffers==25.12.19
 fonttools==4.68.0
 fsspec==2026.9.0
 googleapis-common-protos==1.76.0
@@ -45,13 +47,15 @@ markdown-it-py==4.3.0
 MarkupSafe==3.0.3
 matplotlib==3.11.2
 mdurl==0.1.2
+mediapipe==0.10.35
 mpmath==1.3.0
 multidict==7.2.1
 networkx==3.7
 numpy==2.5.4
 nvidia-ml-py==13.615.71
-# Local metadata-only shim: ultralytics needs the distribution name, but servers
-# must use the headless wheel so cv2 never pulls GUI/Qt libraries.
+# Local metadata-only shims: ultralytics/mediapipe need these distribution names,
+# but servers must use the headless wheel so cv2 never pulls GUI/Qt libraries.
+./vendor/opencv_contrib_python-5.0.0.93-py3-none-any.whl
 ./vendor/opencv_python-5.0.0.93-py3-none-any.whl
 opencv-python-headless==5.0.0.93
 opentelemetry-api==1.45.2
@@ -96,6 +100,7 @@ sentry-sdk==2.75.0
 setuptools==78.1.0
 shellingham==1.5.4
 six==1.17.0
+sounddevice==0.5.6
 starlette==1.10.0
 storage3==2.34.1
 supabase==2.34.1

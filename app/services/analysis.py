@@ -7,6 +7,7 @@ import urllib.request
 from pathlib import Path
 from typing import Any
 
+import cv2
 from huggingface_hub import hf_hub_download
 from ultralytics import YOLO
 
@@ -17,10 +18,16 @@ from app.services.storage import upload_to_cloudinary
 ROOT = Path(__file__).resolve().parents[2]
 MODEL_NAME = "yolov8n.pt"
 PPE_MODEL_NAME = "ppe_model.pt"
+POSE_MODEL_NAME = "pose_landmarker.task"
 MODEL_PATH = ROOT / MODEL_NAME
 PPE_MODEL_PATH = ROOT / PPE_MODEL_NAME
+POSE_MODEL_PATH = ROOT / POSE_MODEL_NAME
 MODEL_URL = (
     "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt"
+)
+POSE_MODEL_URL = (
+    "https://storage.googleapis.com/mediapipe-models/pose_landmarker/"
+    "pose_landmarker_lite/float16/1/pose_landmarker_lite.task"
 )
 PPE_REPO_ID = "wntrsldr/yolov8n-ppe-detection-6classes"
 PPE_HUB_FILENAME = "best.pt"
@@ -31,10 +38,23 @@ HELMET_CLASSES = {"helmet", "hard_hat"}
 VEST_CLASSES = {"vest", "safety_vest"}
 PPE_CLASSES = HELMET_CLASSES | VEST_CLASSES
 
+# PoseLandmark indices: shoulders, hips, knees and ankles.
+POSE_JOINTS = {
+    "hombros": (11, 12),
+    "caderas": (23, 24),
+    "rodillas": (25, 26),
+    "tobillos": (27, 28),
+}
+CAIDA_ALTURA_MIN = 0.25
+CAIDA_ASPECTO_MAX = 1.2
+
 _model: YOLO | None = None
 _ppe_model: YOLO | None = None
+_pose_landmarker: Any | None = None
+_mediapipe_module: Any = None
 _model_lock = threading.Lock()
 _ppe_model_lock = threading.Lock()
+_pose_lock = threading.Lock()
 
 # In-memory results keyed by the original uploaded filename.
 analysis_results: dict[str, dict[str, Any]] = {}
@@ -57,13 +77,55 @@ def _download_ppe_model() -> None:
     shutil.copyfile(cached, PPE_MODEL_PATH)
 
 
+def _download_pose_model() -> None:
+    """Fetch MediaPipe's lite pose landmarker when it is not bundled."""
+    if POSE_MODEL_PATH.is_file():
+        return
+    print(f"[MODEL] Descargando {POSE_MODEL_NAME} desde Google", flush=True)
+    urllib.request.urlretrieve(POSE_MODEL_URL, POSE_MODEL_PATH)
+
+
+def _mediapipe() -> Any:
+    """Import MediaPipe only when pose inference is actually needed."""
+    global _mediapipe_module
+    if _mediapipe_module is None:
+        import mediapipe
+
+        _mediapipe_module = mediapipe
+    return _mediapipe_module
+
+
+def get_pose_landmarker() -> Any:
+    """Lazy loader for the MediaPipe pose landmarker used by fall detection."""
+    global _pose_landmarker
+    if _pose_landmarker is None:
+        with _pose_lock:
+            if _pose_landmarker is None:
+                _download_pose_model()
+                mp = _mediapipe()
+                vision = mp.tasks.vision
+                options = vision.PoseLandmarkerOptions(
+                    base_options=mp.tasks.BaseOptions(
+                        model_asset_path=str(POSE_MODEL_PATH)
+                    ),
+                    running_mode=vision.RunningMode.IMAGE,
+                    num_poses=1,
+                )
+                _pose_landmarker = vision.PoseLandmarker.create_from_options(options)
+    return _pose_landmarker
+
+
 def ensure_models() -> None:
     """Download missing weights at startup; failures are logged, not fatal.
 
     The lazy loaders retry on first inference, so a transient network error
     during boot does not take the whole service down.
     """
-    for download in (_download_person_model, _download_ppe_model):
+    for download in (
+        _download_person_model,
+        _download_ppe_model,
+        _download_pose_model,
+    ):
         try:
             download()
         except Exception as exc:
@@ -124,6 +186,57 @@ def faltan_epis(disponibles: int, personas: int) -> bool:
     return personas > 0 and disponibles < personas
 
 
+def _es_caida(landmarks: Any) -> bool:
+    """Heuristic on normalized pose coordinates: a fallen body lies horizontal."""
+    try:
+        def altura_media(ids: tuple[int, int]) -> float:
+            return (landmarks[ids[0]].y + landmarks[ids[1]].y) / 2
+
+        y_hombros = altura_media(POSE_JOINTS["hombros"])
+        y_rodillas = altura_media(POSE_JOINTS["rodillas"])
+        y_tobillos = altura_media(POSE_JOINTS["tobillos"])
+
+        altura_cuerpo = abs(y_tobillos - y_hombros)
+        ancho_cuerpo = max(
+            abs(landmarks[a].x - landmarks[b].x)
+            for a, b in (
+                POSE_JOINTS["hombros"],
+                POSE_JOINTS["caderas"],
+                POSE_JOINTS["tobillos"],
+            )
+        )
+        rodillas_junto_al_tronco = abs(y_rodillas - y_hombros) < CAIDA_ALTURA_MIN
+        return (
+            altura_cuerpo < CAIDA_ALTURA_MIN
+            or ancho_cuerpo > altura_cuerpo * CAIDA_ASPECTO_MAX
+            or rodillas_junto_al_tronco
+        )
+    except (AttributeError, IndexError, TypeError):
+        return False
+
+
+def detectar_caida(image_path: Path) -> bool:
+    """Return True when MediaPipe pose landmarks suggest someone has fallen.
+
+    MediaPipe is only imported here and failures are non-fatal: an unavailable
+    pose model must never take down the person/PPE pipeline.
+    """
+    imagen = cv2.imread(str(image_path))
+    if imagen is None:
+        return False
+    try:
+        mp = _mediapipe()
+        rgb = cv2.cvtColor(imagen, cv2.COLOR_BGR2RGB)
+        entrada = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        resultado = get_pose_landmarker().detect(entrada)
+    except Exception as exc:
+        print(f"[POSE] WARN no se pudo detectar caídas: {exc}", flush=True)
+        return False
+
+    poses = getattr(resultado, "pose_landmarks", None) or []
+    return any(_es_caida(landmarks) for landmarks in poses)
+
+
 def analyze_image(
     image_path: Path,
     filename: str,
@@ -158,6 +271,9 @@ def analyze_image(
 
         helmet_count = sum(d["class"] in HELMET_CLASSES for d in ppe_detections)
         vest_count = sum(d["class"] in VEST_CLASSES for d in ppe_detections)
+
+        caida_detectada = detectar_caida(image_path)
+
         payload = {
             "filename": filename,
             "imagen_id": imagen_id,
@@ -166,6 +282,7 @@ def analyze_image(
             "ppe_model": PPE_MODEL_NAME,
             "person_count": person_count,
             "material_count": material_count,
+            "caida_detectada": caida_detectada,
             "detections": detections,
         }
         print(json.dumps(payload, indent=2), flush=True)
@@ -199,6 +316,17 @@ def analyze_image(
                             imagen_id=imagen_id,
                         )
                     )
+            if caida_detectada:
+                alertas.append(
+                    create_alerta(
+                        tipo="caida",
+                        descripcion="Posible caída de personal detectada",
+                        nivel="alta",
+                        obra_id=obra_id,
+                        analisis_id=analisis["id"],
+                        imagen_id=imagen_id,
+                    )
+                )
         except Exception as exc:
             print(f"[DB] ERROR persistiendo el análisis: {exc}", flush=True)
 

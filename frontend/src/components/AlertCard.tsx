@@ -1,7 +1,7 @@
-import { CheckCircle2, Clock3, ShieldAlert } from 'lucide-react'
+import { CheckCircle2, Clock3, ShieldAlert, TriangleAlert } from 'lucide-react'
 
 import type { Alerta } from '../lib/types'
-import { cn, formatTime, shortId } from '../lib/utils'
+import { cn, esAlertaCaida, formatTime, shortId } from '../lib/utils'
 import { Badge, levelTone } from './ui/Badge'
 
 interface AlertCardProps {
@@ -18,6 +18,7 @@ const borderByTone: Record<'alto' | 'medio' | 'baja', string> = {
 
 export function AlertCard({ alerta, obraNombre, isLive = false }: AlertCardProps) {
   const tone = levelTone(alerta.nivel)
+  const esCaida = esAlertaCaida(alerta)
 
   return (
     <article
@@ -30,12 +31,17 @@ export function AlertCard({ alerta, obraNombre, isLive = false }: AlertCardProps
         <div
           className={cn(
             'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl',
-            tone === 'alto' && 'bg-rose-500/10 text-rose-500',
-            tone === 'medio' && 'bg-amber-500/10 text-amber-500',
-            tone === 'baja' && 'bg-emerald-500/10 text-emerald-500',
+            esCaida && 'bg-rose-500/15 text-rose-600 dark:text-rose-400',
+            !esCaida && tone === 'alto' && 'bg-rose-500/10 text-rose-500',
+            !esCaida && tone === 'medio' && 'bg-amber-500/10 text-amber-500',
+            !esCaida && tone === 'baja' && 'bg-emerald-500/10 text-emerald-500',
           )}
         >
-          <ShieldAlert className="h-5 w-5" />
+          {esCaida ? (
+            <TriangleAlert className="h-5 w-5" aria-label="Posible caída" />
+          ) : (
+            <ShieldAlert className="h-5 w-5" />
+          )}
         </div>
 
         <div className="min-w-0 flex-1">

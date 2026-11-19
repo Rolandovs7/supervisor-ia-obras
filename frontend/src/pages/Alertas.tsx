@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { BellRing, CheckCircle2, Clock3, RefreshCw } from 'lucide-react'
+import { BellRing, CheckCircle2, Clock3, RefreshCw, TriangleAlert } from 'lucide-react'
 
 import { Badge, levelTone } from '../components/ui/Badge'
 import { Button } from '../components/ui/Button'
@@ -8,7 +8,7 @@ import { Select } from '../components/ui/Select'
 import { Toast } from '../components/ui/Toast'
 import { alertasApi, errorMessage, obrasApi } from '../lib/api'
 import type { Alerta, Obra } from '../lib/types'
-import { cn, formatDate, formatTime } from '../lib/utils'
+import { cn, esAlertaCaida, formatDate, formatTime } from '../lib/utils'
 
 type StatusFilter = 'todas' | 'pendientes' | 'resueltas'
 
@@ -176,7 +176,13 @@ export function Alertas() {
                     className="transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.03]"
                   >
                     <td className="px-5 py-4">
-                      <p className="font-bold text-slate-800 dark:text-slate-100">
+                      <p className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-100">
+                        {esAlertaCaida(alerta) && (
+                          <TriangleAlert
+                            className="h-4 w-4 shrink-0 text-rose-500"
+                            aria-label="Posible caída"
+                          />
+                        )}
                         {alerta.descripcion}
                       </p>
                       <p className="muted mt-1 text-[11px] uppercase tracking-wider">

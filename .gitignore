@@ -15,6 +15,7 @@ __pycache__/
 
 # --- Modelos de IA (se descargan por separado) --------------------------------
 *.pt
+*.task
 
 # --- Node / frontend ----------------------------------------------------------
 frontend/node_modules/

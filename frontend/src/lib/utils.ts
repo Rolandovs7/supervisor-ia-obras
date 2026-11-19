@@ -1,6 +1,8 @@
 import { clsx, type ClassValue } from 'clsx'
 import { twMerge } from 'tailwind-merge'
 
+import type { Alerta } from './types'
+
 export function cn(...inputs: ClassValue[]): string {
   return twMerge(clsx(inputs))
 }
@@ -34,4 +36,13 @@ export function formatTime(value?: string | null): string {
 
 export function shortId(value: string): string {
   return value.length > 8 ? `${value.slice(0, 8)}…` : value
+}
+
+export function esAlertaCaida(alerta: Pick<Alerta, 'tipo' | 'descripcion'>): boolean {
+  const normalizar = (texto: string) =>
+    texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+  return (
+    normalizar(alerta.tipo) === 'caida' ||
+    normalizar(alerta.descripcion).includes('caida')
+  )
 }

@@ -1,5 +1,6 @@
 import io
 from pathlib import Path
+from types import SimpleNamespace
 
 import numpy as np
 from fastapi.testclient import TestClient
@@ -63,6 +64,53 @@ def _ppe_result(*classes):
     return _FakeResult(PPE_NAMES, [_FakeBox(PPE_INDEX[name.lower()]) for name in classes])
 
 
+class _FakeLandmark:
+    def __init__(self, x, y):
+        self.x = x
+        self.y = y
+
+
+class _FakePoseImage:
+    def __init__(self, image_format=None, data=None):
+        self.image_format = image_format
+        self.data = data
+
+
+class _FakeImageFormat:
+    SRGB = "SRGB"
+
+
+class _FakeMediaPipe:
+    Image = _FakePoseImage
+    ImageFormat = _FakeImageFormat
+
+
+class _FakePoseLandmarker:
+    def __init__(self, landmarks):
+        self.landmarks = landmarks
+
+    def detect(self, image):
+        return SimpleNamespace(
+            pose_landmarks=[self.landmarks] if self.landmarks else []
+        )
+
+
+def _pose_landmarks(altura=0.6, ancho=0.12, rodillas_junto_al_tronco=False):
+    """33 normalized pose points; defaults describe a person standing up."""
+    puntos = [_FakeLandmark(0.5, 0.5) for _ in range(33)]
+    x_izq, x_der = 0.5 - ancho / 2, 0.5 + ancho / 2
+    y_hombros = 0.2
+    puntos[11], puntos[12] = _FakeLandmark(x_izq, y_hombros), _FakeLandmark(x_der, y_hombros)
+    puntos[23], puntos[24] = _FakeLandmark(x_izq, 0.5), _FakeLandmark(x_der, 0.5)
+    y_rodillas = y_hombros if rodillas_junto_al_tronco else y_hombros + altura * 0.6
+    puntos[25], puntos[26] = _FakeLandmark(x_izq, y_rodillas), _FakeLandmark(x_der, y_rodillas)
+    puntos[27], puntos[28] = (
+        _FakeLandmark(x_izq, y_hombros + altura),
+        _FakeLandmark(x_der, y_hombros + altura),
+    )
+    return puntos
+
+
 def _dummy_png() -> bytes:
     image = Image.fromarray(np.zeros((32, 32, 3), dtype=np.uint8))
     buffer = io.BytesIO()
@@ -84,6 +132,8 @@ def _mock_pipeline(
     person_count=1,
     ppe_classes=("helmet", "Vest"),
     material_classes=(),
+    caida=False,
+    landmarks=None,
 ):
     monkeypatch.setattr(
         analysis,
@@ -92,6 +142,16 @@ def _mock_pipeline(
     )
     monkeypatch.setattr(analysis, "_ppe_model", _FakeModel([_ppe_result(*ppe_classes)]))
     monkeypatch.setattr(analysis, "upload_to_cloudinary", lambda path: SECURE_URL)
+    monkeypatch.setattr(analysis, "_mediapipe_module", _FakeMediaPipe)
+    if landmarks is None:
+        landmarks = (
+            _pose_landmarks(altura=0.08, ancho=0.55)
+            if caida
+            else _pose_landmarks()
+        )
+    monkeypatch.setattr(
+        analysis, "get_pose_landmarker", lambda: _FakePoseLandmarker(landmarks)
+    )
 
 
 def test_healthcheck():
@@ -121,6 +181,7 @@ def test_results(monkeypatch, fake_supabase, auth_headers):
     assert response.status_code == 200
     assert response.json()["person_count"] == 1
     assert response.json()["material_count"] == 0
+    assert response.json()["caida_detectada"] is False
     assert response.json()["detections"][0]["class"] == "person"
     assert response.json()["secure_url"] == SECURE_URL
 
@@ -233,3 +294,61 @@ def test_sin_alertas_sin_personas(monkeypatch, fake_supabase, auth_headers):
     assert _upload("ppe_sin_personas.png", auth_headers).status_code == 200
 
     assert fake_supabase.store["alertas"] == []
+
+
+def test_sin_caida_con_persona_de_pie(monkeypatch, fake_supabase, auth_headers):
+    _mock_pipeline(monkeypatch)
+    assert _upload("sin_caida.png", auth_headers).status_code == 200
+
+    payload = client.get("/results/sin_caida.png", headers=auth_headers).json()
+    assert payload["caida_detectada"] is False
+    assert all(alerta["tipo"] != "caida" for alerta in fake_supabase.store["alertas"])
+
+
+def test_caida_detectada_genera_alerta_alta(monkeypatch, fake_supabase, auth_headers):
+    _mock_pipeline(monkeypatch, caida=True)
+    assert _upload(
+        "caida.png", auth_headers, data={"obra_id": "obras-3"}
+    ).status_code == 200
+
+    payload = client.get("/results/caida.png", headers=auth_headers).json()
+    assert payload["caida_detectada"] is True
+
+    alerta = next(a for a in fake_supabase.store["alertas"] if a["tipo"] == "caida")
+    assert alerta["descripcion"] == "Posible caída de personal detectada"
+    assert alerta["nivel"] == "alta"
+    assert alerta["resuelta"] is False
+    assert alerta["obra_id"] == "obras-3"
+
+
+def test_heuristica_caida_cuerpo_horizontal(monkeypatch, fake_supabase, auth_headers):
+    # Torso vertical pero muy ancho: la proporción delata la caída.
+    _mock_pipeline(monkeypatch, landmarks=_pose_landmarks(altura=0.5, ancho=0.75))
+    assert _upload("caida_horizontal.png", auth_headers).status_code == 200
+
+    payload = client.get("/results/caida_horizontal.png", headers=auth_headers).json()
+    assert payload["caida_detectada"] is True
+
+
+def test_heuristica_caida_rodillas_junto_a_hombros(
+    monkeypatch, fake_supabase, auth_headers
+):
+    _mock_pipeline(
+        monkeypatch,
+        landmarks=_pose_landmarks(rodillas_junto_al_tronco=True),
+    )
+    assert _upload("caida_rodillas.png", auth_headers).status_code == 200
+
+    payload = client.get("/results/caida_rodillas.png", headers=auth_headers).json()
+    assert payload["caida_detectada"] is True
+
+
+def test_detectar_caida_sin_pose(monkeypatch, tmp_path):
+    monkeypatch.setattr(analysis, "_mediapipe_module", _FakeMediaPipe)
+    monkeypatch.setattr(
+        analysis, "get_pose_landmarker", lambda: _FakePoseLandmarker([])
+    )
+    imagen = tmp_path / "vacia.png"
+    imagen.write_bytes(_dummy_png())
+
+    assert analysis.detectar_caida(imagen) is False
