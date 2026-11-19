@@ -1,7 +1,9 @@
-// Camera screen: captures a photo and queues it for later upload.
+// Camera tab: captures a photo and queues it for later upload.
 
+import 'dart:async';
 import 'dart:io';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
@@ -21,6 +23,8 @@ class CapturaScreen extends StatefulWidget {
 class _CapturaScreenState extends State<CapturaScreen> {
   final ImagePicker _picker = ImagePicker();
   late Future<List<FotoPendiente>> _fotos;
+  late final StreamSubscription<List<ConnectivityResult>> _conexionSub;
+  bool _conectado = false;
   bool _tomando = false;
   bool _sincronizando = false;
 
@@ -28,6 +32,26 @@ class _CapturaScreenState extends State<CapturaScreen> {
   void initState() {
     super.initState();
     _fotos = obtenerFotosPendientes();
+    _verificarConexion();
+    _conexionSub = Connectivity().onConnectivityChanged.listen((resultados) {
+      if (!mounted) return;
+      setState(() => _conectado = _hayRed(resultados));
+    });
+  }
+
+  @override
+  void dispose() {
+    _conexionSub.cancel();
+    super.dispose();
+  }
+
+  bool _hayRed(List<ConnectivityResult> resultados) =>
+      resultados.any((resultado) => resultado != ConnectivityResult.none);
+
+  Future<void> _verificarConexion() async {
+    final resultados = await Connectivity().checkConnectivity();
+    if (!mounted) return;
+    setState(() => _conectado = _hayRed(resultados));
   }
 
   void _recargar() {
@@ -93,87 +117,147 @@ class _CapturaScreenState extends State<CapturaScreen> {
     }
   }
 
+  String _hora(DateTime value) {
+    final local = value.toLocal();
+    return '${local.day.toString().padLeft(2, '0')}/'
+        '${local.month.toString().padLeft(2, '0')}/'
+        '${local.year} ${local.hour.toString().padLeft(2, '0')}:'
+        '${local.minute.toString().padLeft(2, '0')}';
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Captura de evidencia'),
-        actions: [
-          IconButton(
-            onPressed: _recargar,
-            icon: const Icon(Icons.refresh),
-            tooltip: 'Actualizar lista',
-          ),
-        ],
-      ),
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              ElevatedButton.icon(
+    final colorConectado = _conectado
+        ? const Color(0xFF22C55E)
+        : const Color(0xFFEF4444);
+
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Card(
+              margin: EdgeInsets.zero,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _conectado ? Icons.wifi : Icons.wifi_off,
+                      color: colorConectado,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      _conectado ? 'Conectado' : 'Sin conexión',
+                      style: TextStyle(color: colorConectado),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      onPressed: _recargar,
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'Actualizar lista',
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
                 onPressed: _tomando ? null : _tomarFoto,
                 icon: _tomando
                     ? const SizedBox(
-                        height: 18,
-                        width: 18,
+                        height: 24,
+                        width: 24,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Icon(Icons.camera_alt),
-                label: const Text('Tomar Foto'),
-              ),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: _sincronizando ? null : _sincronizar,
-                icon: _sincronizando
-                    ? const SizedBox(
-                        height: 18,
-                        width: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.cloud_upload_outlined),
-                label: const Text('Sincronizar Ahora'),
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'Fotos pendientes',
-                style: Theme.of(context).textTheme.titleMedium,
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: FutureBuilder<List<FotoPendiente>>(
-                  future: _fotos,
-                  builder: (context, snapshot) {
-                    if (snapshot.connectionState == ConnectionState.waiting) {
-                      return const Center(child: CircularProgressIndicator());
-                    }
-                    if (snapshot.hasError) {
-                      return Center(child: Text('Error: ${snapshot.error}'));
-                    }
-                    final fotos = snapshot.data ?? const <FotoPendiente>[];
-                    if (fotos.isEmpty) {
-                      return const Center(
-                        child: Text('No hay fotos pendientes.'),
-                      );
-                    }
-                    return ListView.separated(
-                      itemCount: fotos.length,
-                      separatorBuilder: (_, _) => const Divider(height: 1),
-                      itemBuilder: (context, index) {
-                        final foto = fotos[index];
-                        return ListTile(
-                          leading: const Icon(Icons.image_outlined),
-                          title: Text(p.basename(foto.path)),
-                          subtitle: Text(foto.timestamp.toLocal().toString()),
-                        );
-                      },
-                    );
-                  },
+                    : const Icon(Icons.camera_alt, size: 32),
+                label: const Text(
+                  'Tomar Foto',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF3B82F6),
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                  ),
                 ),
               ),
-            ],
-          ),
+            ),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Fotos pendientes',
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _sincronizando ? null : _sincronizar,
+                  icon: _sincronizando
+                      ? const SizedBox(
+                          height: 16,
+                          width: 16,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.cloud_upload_outlined),
+                  label: const Text('Sincronizar Ahora'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Expanded(
+              child: FutureBuilder<List<FotoPendiente>>(
+                future: _fotos,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(child: Text('Error: ${snapshot.error}'));
+                  }
+                  final fotos = snapshot.data ?? const <FotoPendiente>[];
+                  if (fotos.isEmpty) {
+                    return const Center(
+                      child: Text('No hay fotos pendientes.'),
+                    );
+                  }
+                  return ListView.builder(
+                    itemCount: fotos.length,
+                    itemBuilder: (context, index) {
+                      final foto = fotos[index];
+                      return Card(
+                        child: ListTile(
+                          leading: CircleAvatar(
+                            backgroundColor: const Color(0xFFF59E0B)
+                                .withValues(alpha: 0.18),
+                            child: const Icon(
+                              Icons.schedule,
+                              color: Color(0xFFF59E0B),
+                            ),
+                          ),
+                          title: Text(p.basename(foto.path)),
+                          subtitle: Text(_hora(foto.timestamp)),
+                          trailing: const Icon(
+                            Icons.cloud_off_outlined,
+                            color: Colors.grey,
+                          ),
+                        ),
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
     );

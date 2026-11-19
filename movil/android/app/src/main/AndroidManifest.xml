@@ -4,7 +4,7 @@
     <!-- Required in release: debug/profile manifests declare it, main did not. -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="movil"
+        android:label="Supervisor IA"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
