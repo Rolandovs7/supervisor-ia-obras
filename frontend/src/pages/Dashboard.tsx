@@ -18,14 +18,7 @@ import { Card } from '../components/ui/Card'
 import { Select } from '../components/ui/Select'
 import { Toast } from '../components/ui/Toast'
 import { useAlertSocket } from '../context/WebSocketContext'
-import {
-  alertasApi,
-  camarasApi,
-  errorMessage,
-  metricsApi,
-  obrasApi,
-  uploadImage,
-} from '../lib/api'
+import { alertasApi, errorMessage, metricsApi, obrasApi, uploadImage } from '../lib/api'
 import type { Alerta, Metrics, Obra } from '../lib/types'
 import { cn, formatDate } from '../lib/utils'
 
@@ -71,11 +64,16 @@ export function Dashboard() {
   const [obraId, setObraId] = useState('')
   const [dragging, setDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [cameraActive, setCameraActive] = useState(false)
+  const [cameraLoading, setCameraLoading] = useState(false)
   const [capturing, setCapturing] = useState(false)
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(
     null,
   )
   const inputRef = useRef<HTMLInputElement>(null)
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const streamRef = useRef<MediaStream | null>(null)
 
   useEffect(() => {
     let active = true
@@ -103,6 +101,21 @@ export function Dashboard() {
     setPreview(url)
     return () => URL.revokeObjectURL(url)
   }, [file])
+
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video) return
+    video.srcObject = cameraActive ? streamRef.current : null
+    if (cameraActive) void video.play().catch(() => undefined)
+  }, [cameraActive])
+
+  useEffect(
+    () => () => {
+      streamRef.current?.getTracks().forEach((track) => track.stop())
+      streamRef.current = null
+    },
+    [],
+  )
 
   const liveIds = useMemo(() => new Set(liveAlerts.map((alert) => alert.id)), [liveAlerts])
 
@@ -135,15 +148,79 @@ export function Dashboard() {
     acceptFile(event.dataTransfer.files[0])
   }
 
-  const handleLocalCapture = async () => {
+  const detenerCamara = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop())
+    streamRef.current = null
+    setCameraActive(false)
+  }
+
+  const activarCamara = async () => {
+    if (cameraActive) {
+      detenerCamara()
+      return
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setToast({
+        message: 'Tu navegador no permite acceder a la cámara.',
+        tone: 'error',
+      })
+      return
+    }
+
+    setCameraLoading(true)
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true })
+      streamRef.current = stream
+      setCameraActive(true)
+      setToast(null)
+    } catch (cause) {
+      const detalle =
+        cause instanceof DOMException && cause.name === 'NotAllowedError'
+          ? 'Permiso de cámara denegado. Habilítalo en el navegador.'
+          : cause instanceof Error
+            ? cause.message
+            : 'Error desconocido'
+      setToast({ message: `No se pudo activar la cámara: ${detalle}`, tone: 'error' })
+    } finally {
+      setCameraLoading(false)
+    }
+  }
+
+  const tomarFotoCamara = async () => {
+    const video = videoRef.current
+    const canvas = canvasRef.current
+    if (!video || !canvas || !cameraActive || !video.videoWidth || !video.videoHeight) {
+      setToast({ message: 'Activa la cámara antes de tomar la foto.', tone: 'error' })
+      return
+    }
+
     setCapturing(true)
     try {
-      await camarasApi.capturar(obraId || undefined)
-      setToast({ message: 'Imagen capturada y analizada', tone: 'success' })
+      canvas.width = video.videoWidth
+      canvas.height = video.videoHeight
+      const context = canvas.getContext('2d')
+      if (!context) throw new Error('No se pudo procesar el frame de la cámara')
+      context.drawImage(video, 0, 0, canvas.width, canvas.height)
+
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob(
+          (result) =>
+            result ? resolve(result) : reject(new Error('No se pudo generar la imagen')),
+          'image/jpeg',
+          0.92,
+        )
+      })
+      const foto = new File([blob], `camara_${Date.now()}.jpg`, {
+        type: 'image/jpeg',
+      })
+
+      await uploadImage(foto, obraId || undefined)
+      setToast({ message: 'Foto capturada y enviada a análisis', tone: 'success' })
+      detenerCamara()
       setMetrics(await metricsApi.get())
     } catch (cause) {
       setToast({
-        message: errorMessage(cause, 'No se pudo capturar desde la cámara local.'),
+        message: errorMessage(cause, 'No se pudo enviar la foto capturada.'),
         tone: 'error',
       })
     } finally {
@@ -320,21 +397,6 @@ export function Dashboard() {
             </Button>
           </div>
 
-          <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
-            <Button
-              variant="outline"
-              onClick={() => void handleLocalCapture()}
-              loading={capturing}
-              leftIcon={<Camera className="h-4 w-4" />}
-              className="h-11 w-full"
-            >
-              Capturar desde Cámara Local
-            </Button>
-            <p className="muted mt-2 text-[11px]">
-              Simula una cámara IP conectada al servidor. La alerta llegará por WebSocket.
-            </p>
-          </div>
-
           {obras.length === 0 && (
             <p className="muted mt-3 text-[11px]">
               Aún no hay obras registradas. Puedes subir la imagen sin asociarla.
@@ -377,6 +439,65 @@ export function Dashboard() {
               ))}
             </div>
           )}
+        </Card>
+
+        <Card
+          title="Cámara en vivo"
+          subtitle="Vista previa local antes de enviar la evidencia"
+          className="xl:col-span-2"
+          action={
+            <span className="muted inline-flex items-center gap-1.5 text-[11px] font-semibold">
+              <Radio
+                className={cn(
+                  'h-3.5 w-3.5',
+                  cameraActive && 'animate-pulse text-emerald-500',
+                )}
+              />
+              {cameraActive ? 'Cámara activa' : 'Cámara apagada'}
+            </span>
+          }
+        >
+          <div className="space-y-4">
+            <div className="relative aspect-video w-full overflow-hidden rounded-xl bg-black">
+              {cameraActive ? (
+                <video
+                  ref={videoRef}
+                  autoPlay
+                  playsInline
+                  muted
+                  className="h-full w-full object-cover"
+                />
+              ) : (
+                <div className="flex h-full flex-col items-center justify-center gap-2 text-slate-400">
+                  <Camera className="h-9 w-9" />
+                  <p className="text-xs">Activa la cámara para ver la vista previa.</p>
+                </div>
+              )}
+            </div>
+            <canvas ref={canvasRef} className="hidden" />
+            <div className="flex flex-wrap gap-3">
+              <Button
+                variant="outline"
+                onClick={() => void activarCamara()}
+                loading={cameraLoading}
+                leftIcon={<Camera className="h-4 w-4" />}
+              >
+                {cameraActive ? 'Desactivar Cámara' : 'Activar Cámara'}
+              </Button>
+              <Button
+                onClick={() => void tomarFotoCamara()}
+                loading={capturing}
+                disabled={!cameraActive}
+                leftIcon={<Camera className="h-4 w-4" />}
+              >
+                Tomar Foto
+              </Button>
+            </div>
+            <p className="muted text-[11px]">
+              El frame se envía a <span className="font-mono">/upload</span> con la obra
+              seleccionada. La alerta llegará por WebSocket.
+            </p>
+          </div>
         </Card>
       </div>
 
