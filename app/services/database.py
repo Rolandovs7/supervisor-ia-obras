@@ -70,6 +70,21 @@ def get_obra(obra_id: str) -> dict[str, Any] | None:
     return data[0] if data else None
 
 
+def update_obra_plano(obra_id: str, plano_url: str) -> dict[str, Any]:
+    """Store the Cloudinary URL of an obra's floor plan."""
+    data = (
+        get_client()
+        .table("obras")
+        .update({"plano_url": plano_url})
+        .eq("id", obra_id)
+        .execute()
+        .data
+    )
+    if not data:
+        raise RuntimeError(f"Supabase UPDATE of obras/{obra_id} returned no rows")
+    return data[0]
+
+
 def save_imagen(
     filename: str, temp_path: str, obra_id: str | None = None
 ) -> dict[str, Any]:
@@ -104,6 +119,7 @@ def save_analisis(imagen_id: str, payload: dict[str, Any]) -> dict[str, Any]:
             "modelo": payload["model"],
             "person_count": payload["person_count"],
             "material_count": payload.get("material_count", 0),
+            "overlay_url": payload.get("overlay_url"),
             "detections": payload["detections"],
         },
     )

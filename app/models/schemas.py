@@ -37,6 +37,7 @@ class ObraResponse(BaseModel):
     ubicacion: str | None = None
     fecha_inicio: date | None = None
     fecha_fin: date | None = None
+    plano_url: str | None = None
 
 
 class RegisterRequest(BaseModel):

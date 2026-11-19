@@ -15,6 +15,7 @@ export interface Obra {
   ubicacion?: string | null
   fecha_inicio?: string | null
   fecha_fin?: string | null
+  plano_url?: string | null
 }
 
 export type ObraInput = Pick<
@@ -49,4 +50,20 @@ export interface Metrics {
 export interface CamaraCaptureResponse {
   filename: string
   secure_url: string
+}
+
+export interface UploadResponse {
+  filename: string
+  status: string
+  temp_path: string
+  obra_id?: string | null
+}
+
+export interface AnalysisResult {
+  filename: string
+  secure_url: string
+  person_count: number
+  material_count: number
+  caida_detectada: boolean
+  overlay_url?: string | null
 }

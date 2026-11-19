@@ -31,11 +31,13 @@ CREATE TABLE IF NOT EXISTS obras (
     ubicacion text,
     fecha_inicio date,
     fecha_fin date,
+    plano_url text,
     created_at timestamptz NOT NULL DEFAULT now()
 );
 
 ALTER TABLE obras ADD COLUMN IF NOT EXISTS fecha_inicio date;
 ALTER TABLE obras ADD COLUMN IF NOT EXISTS fecha_fin date;
+ALTER TABLE obras ADD COLUMN IF NOT EXISTS plano_url text;
 
 CREATE TABLE IF NOT EXISTS imagenes (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -50,6 +52,7 @@ ALTER TABLE imagenes ADD COLUMN IF NOT EXISTS temp_path text;
 ALTER TABLE imagenes ADD COLUMN IF NOT EXISTS secure_url text;
 
 ALTER TABLE analisis ADD COLUMN IF NOT EXISTS material_count integer NOT NULL DEFAULT 0;
+ALTER TABLE analisis ADD COLUMN IF NOT EXISTS overlay_url text;
 
 CREATE TABLE IF NOT EXISTS analisis (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -57,6 +60,7 @@ CREATE TABLE IF NOT EXISTS analisis (
     modelo text NOT NULL,
     person_count integer NOT NULL DEFAULT 0,
     material_count integer NOT NULL DEFAULT 0,
+    overlay_url text,
     detections jsonb NOT NULL DEFAULT '[]'::jsonb,
     created_at timestamptz NOT NULL DEFAULT now()
 );

@@ -7,6 +7,7 @@ import {
   CloudUpload,
   FileImage,
   Images,
+  Maximize2,
   Package,
   Radio,
   RefreshCw,
@@ -17,10 +18,18 @@ import {
 import { AlertCard } from '../components/AlertCard'
 import { Button } from '../components/ui/Button'
 import { Card } from '../components/ui/Card'
+import { Modal } from '../components/ui/Modal'
 import { Select } from '../components/ui/Select'
 import { Toast } from '../components/ui/Toast'
 import { useAlertSocket } from '../context/WebSocketContext'
-import { alertasApi, errorMessage, metricsApi, obrasApi, uploadImage } from '../lib/api'
+import {
+  alertasApi,
+  errorMessage,
+  metricsApi,
+  obrasApi,
+  resultadosApi,
+  uploadImage,
+} from '../lib/api'
 import type { Alerta, Metrics, Obra } from '../lib/types'
 import { cn, formatDate } from '../lib/utils'
 
@@ -106,6 +115,8 @@ export function Dashboard() {
   const [camaraSeleccionada, setCamaraSeleccionada] =
     useState<MediaDeviceInfo | null>(null)
   const [capturing, setCapturing] = useState(false)
+  const [overlayUrl, setOverlayUrl] = useState<string | null>(null)
+  const [overlayOpen, setOverlayOpen] = useState(false)
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(
     null,
   )
@@ -113,6 +124,7 @@ export function Dashboard() {
   const videoRef = useRef<HTMLVideoElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
+  const overlayTimers = useRef<number[]>([])
 
   useEffect(() => {
     let active = true
@@ -152,6 +164,14 @@ export function Dashboard() {
     () => () => {
       streamRef.current?.getTracks().forEach((track) => track.stop())
       streamRef.current = null
+    },
+    [],
+  )
+
+  useEffect(
+    () => () => {
+      overlayTimers.current.forEach((timer) => window.clearInterval(timer))
+      overlayTimers.current = []
     },
     [],
   )
@@ -288,6 +308,24 @@ export function Dashboard() {
     }
   }
 
+  const seguirOverlay = (filename: string) => {
+    let intentos = 0
+    const timer = window.setInterval(() => {
+      intentos += 1
+      void resultadosApi
+        .get(filename)
+        .then((result) => {
+          if (result.overlay_url) {
+            setOverlayUrl(result.overlay_url)
+            window.clearInterval(timer)
+          }
+        })
+        .catch(() => undefined)
+      if (intentos >= 24) window.clearInterval(timer)
+    }, 2500)
+    overlayTimers.current.push(timer)
+  }
+
   const tomarFotoCamara = async () => {
     const video = videoRef.current
     const canvas = canvasRef.current
@@ -316,7 +354,8 @@ export function Dashboard() {
         type: 'image/jpeg',
       })
 
-      await uploadImage(foto, obraId || undefined)
+      const respuesta = await uploadImage(foto, obraId || undefined)
+      seguirOverlay(respuesta.filename)
       setToast({ message: 'Foto capturada y enviada a análisis', tone: 'success' })
       detenerCamara()
       setMetrics(await metricsApi.get())
@@ -337,7 +376,8 @@ export function Dashboard() {
     }
     setUploading(true)
     try {
-      await uploadImage(file, obraId || undefined)
+      const respuesta = await uploadImage(file, obraId || undefined)
+      seguirOverlay(respuesta.filename)
       setToast({
         message: 'Imagen enviada. La alerta aparecerá en tiempo real.',
         tone: 'success',
@@ -627,6 +667,57 @@ export function Dashboard() {
           </div>
         </Card>
       </div>
+
+      {overlayUrl && (
+        <Card
+          title="Overlay sobre el plano"
+          subtitle="Detecciones fusionadas con el plano de la obra"
+        >
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
+            <button
+              type="button"
+              onClick={() => setOverlayOpen(true)}
+              className="overflow-hidden rounded-xl border border-slate-200 bg-slate-900 dark:border-slate-700"
+            >
+              <img
+                src={overlayUrl}
+                alt="Miniatura del overlay sobre el plano"
+                className="h-32 w-56 object-cover transition hover:opacity-80"
+              />
+            </button>
+            <div className="space-y-2">
+              <p className="muted max-w-md text-xs leading-relaxed">
+                La superposición se genera automáticamente cuando la obra tiene un
+                plano cargado.
+              </p>
+              <Button
+                variant="outline"
+                size="sm"
+                leftIcon={<Maximize2 className="h-3.5 w-3.5" />}
+                onClick={() => setOverlayOpen(true)}
+              >
+                Ver en grande
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <Modal
+        open={overlayOpen}
+        onClose={() => setOverlayOpen(false)}
+        title="Overlay sobre el plano"
+        description="Foto de la obra fusionada con su plano"
+        className="max-w-4xl"
+      >
+        {overlayUrl && (
+          <img
+            src={overlayUrl}
+            alt="Overlay de detecciones sobre el plano"
+            className="max-h-[75vh] w-full rounded-xl object-contain"
+          />
+        )}
+      </Modal>
 
       <Toast
         message={toast?.message ?? null}

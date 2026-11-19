@@ -2,6 +2,7 @@
 
 import json
 import shutil
+import tempfile
 import threading
 import urllib.request
 from pathlib import Path
@@ -12,7 +13,12 @@ from huggingface_hub import hf_hub_download
 from ultralytics import YOLO
 
 from app.api.websockets import manager
-from app.services.database import create_alerta, save_analisis, update_imagen_url
+from app.services.database import (
+    create_alerta,
+    get_obra,
+    save_analisis,
+    update_imagen_url,
+)
 from app.services.storage import upload_to_cloudinary
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -237,6 +243,46 @@ def detectar_caida(image_path: Path) -> bool:
     return any(_es_caida(landmarks) for landmarks in poses)
 
 
+def generar_overlay(
+    image_path: Path,
+    obra_id: str,
+    secure_url: str | None = None,
+) -> str:
+    """Blend the captured photo with the obra's floor plan and upload the result.
+
+    Without a plan (or on any failure) the original photo URL is returned so
+    the analysis pipeline never breaks because of the overlay.
+    """
+    original = secure_url or ""
+    try:
+        obra = get_obra(obra_id)
+        plano_url = (obra or {}).get("plano_url")
+        if not plano_url:
+            return original
+
+        foto = cv2.imread(str(image_path))
+        if foto is None:
+            return original
+
+        with tempfile.TemporaryDirectory() as temporal:
+            plano_path = Path(temporal) / "plano.img"
+            overlay_path = Path(temporal) / "overlay.jpg"
+            urllib.request.urlretrieve(plano_url, str(plano_path))
+
+            plano = cv2.imread(str(plano_path))
+            if plano is None:
+                return original
+
+            foto_ajustada = cv2.resize(foto, (plano.shape[1], plano.shape[0]))
+            fusion = cv2.addWeighted(plano, 0.5, foto_ajustada, 0.5, 0)
+            if not cv2.imwrite(str(overlay_path), fusion):
+                return original
+            return upload_to_cloudinary(overlay_path)
+    except Exception as exc:
+        print(f"[OVERLAY] WARN no se pudo generar el overlay: {exc}", flush=True)
+        return original
+
+
 def analyze_image(
     image_path: Path,
     filename: str,
@@ -274,6 +320,10 @@ def analyze_image(
 
         caida_detectada = detectar_caida(image_path)
 
+        overlay_url = None
+        if obra_id:
+            overlay_url = generar_overlay(image_path, obra_id, secure_url)
+
         payload = {
             "filename": filename,
             "imagen_id": imagen_id,
@@ -283,6 +333,7 @@ def analyze_image(
             "person_count": person_count,
             "material_count": material_count,
             "caida_detectada": caida_detectada,
+            "overlay_url": overlay_url,
             "detections": detections,
         }
         print(json.dumps(payload, indent=2), flush=True)

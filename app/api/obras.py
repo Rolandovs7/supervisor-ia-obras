@@ -5,13 +5,20 @@ from datetime import date
 from io import BytesIO
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 
 from app.core.security import get_current_user
 from app.models.schemas import ObraCreate, ObraResponse
-from app.services.database import create_obra, get_alertas, get_obra, get_obras
+from app.services.database import (
+    create_obra,
+    get_alertas,
+    get_obra,
+    get_obras,
+    update_obra_plano,
+)
 from app.services.reports import build_obra_report
+from app.services.storage import save_temporary, upload_to_cloudinary
 
 router = APIRouter(prefix="/obras", tags=["obras"])
 
@@ -46,6 +53,26 @@ async def get_obra_endpoint(
             status_code=status.HTTP_404_NOT_FOUND, detail="Obra no encontrada"
         )
     return obra
+
+
+@router.post("/{obra_id}/plano", response_model=ObraResponse)
+async def subir_plano(
+    obra_id: str,
+    file: UploadFile = File(...),
+    user: Any = Depends(get_current_user),
+) -> dict[str, Any]:
+    """Upload an obra's floor plan and persist its Cloudinary URL."""
+    if get_obra(obra_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Obra no encontrada"
+        )
+
+    image_path = await save_temporary(file)
+    try:
+        plano_url = upload_to_cloudinary(image_path)
+        return update_obra_plano(obra_id, plano_url)
+    finally:
+        image_path.unlink(missing_ok=True)
 
 
 @router.get("/{obra_id}/reporte")

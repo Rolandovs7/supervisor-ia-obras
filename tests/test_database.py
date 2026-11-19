@@ -15,6 +15,15 @@ def test_create_obra_and_getters(fake_supabase):
     assert database.get_obra("no-existe") is None
 
 
+def test_update_obra_plano(fake_supabase):
+    obra = database.create_obra({"nombre": "Torre Sur"})
+    actualizada = database.update_obra_plano(
+        obra["id"], "https://cdn.example/plano.png"
+    )
+    assert actualizada["plano_url"] == "https://cdn.example/plano.png"
+    assert database.get_obra(obra["id"])["plano_url"] == "https://cdn.example/plano.png"
+
+
 def test_save_imagen(fake_supabase):
     row = database.save_imagen("obra.png", "/tmp/obra.png", obra_id="obras-1")
     assert row["filename"] == "obra.png"
@@ -36,6 +45,7 @@ def test_save_and_get_analisis(fake_supabase):
         "model": "yolov8n.pt",
         "person_count": 2,
         "material_count": 3,
+        "overlay_url": "https://cdn.example/overlay.png",
         "detections": [{"class": "person", "confidence": 0.9, "bbox": [0, 0, 1, 1]}],
     }
     saved = database.save_analisis(imagen["id"], payload)
@@ -43,6 +53,7 @@ def test_save_and_get_analisis(fake_supabase):
     assert found == [saved]
     assert found[0]["person_count"] == 2
     assert found[0]["material_count"] == 3
+    assert found[0]["overlay_url"] == "https://cdn.example/overlay.png"
     assert found[0]["detections"] == payload["detections"]
 
 

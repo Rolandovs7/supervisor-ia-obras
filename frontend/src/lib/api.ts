@@ -3,11 +3,13 @@ import axios from 'axios'
 import { clearSession, getToken } from './auth'
 import type {
   Alerta,
+  AnalysisResult,
   CamaraCaptureResponse,
   LoginResponse,
   Metrics,
   Obra,
   ObraInput,
+  UploadResponse,
 } from './types'
 
 export const API_BASE_URL = import.meta.env.VITE_API_URL ?? 'http://localhost:8000'
@@ -65,6 +67,15 @@ export const obrasApi = {
     const { data } = await api.post<Obra>('/obras', payload)
     return data
   },
+  async uploadPlano(obraId: string, file: File): Promise<Obra> {
+    const form = new FormData()
+    form.append('file', file)
+    const { data } = await api.post<Obra>(
+      `/obras/${encodeURIComponent(obraId)}/plano`,
+      form,
+    )
+    return data
+  },
   async downloadReport(obra: Obra): Promise<void> {
     const response = await api.get<Blob>(
       `/obras/${encodeURIComponent(obra.id)}/reporte`,
@@ -112,6 +123,15 @@ export const metricsApi = {
   },
 }
 
+export const resultadosApi = {
+  async get(filename: string): Promise<AnalysisResult> {
+    const { data } = await api.get<AnalysisResult>(
+      `/results/${encodeURIComponent(filename)}`,
+    )
+    return data
+  },
+}
+
 export const camarasApi = {
   async capturar(obraId?: string): Promise<CamaraCaptureResponse> {
     const { data } = await api.get<CamaraCaptureResponse>('/camaras/capturar', {
@@ -121,9 +141,13 @@ export const camarasApi = {
   },
 }
 
-export async function uploadImage(file: File, obraId?: string): Promise<void> {
+export async function uploadImage(
+  file: File,
+  obraId?: string,
+): Promise<UploadResponse> {
   const form = new FormData()
   form.append('file', file)
   if (obraId) form.append('obra_id', obraId)
-  await api.post('/upload', form)
+  const { data } = await api.post<UploadResponse>('/upload', form)
+  return data
 }

@@ -12,6 +12,7 @@ from main import app
 client = TestClient(app)
 
 SECURE_URL = "https://res.cloudinary.com/demo/image/upload/supervisor-ia/test.png"
+OVERLAY_URL = "https://res.cloudinary.com/demo/image/upload/supervisor-ia/overlay.jpg"
 
 
 PPE_NAMES = {
@@ -142,6 +143,11 @@ def _mock_pipeline(
     )
     monkeypatch.setattr(analysis, "_ppe_model", _FakeModel([_ppe_result(*ppe_classes)]))
     monkeypatch.setattr(analysis, "upload_to_cloudinary", lambda path: SECURE_URL)
+    monkeypatch.setattr(
+        analysis,
+        "generar_overlay",
+        lambda path, obra_id, url=None: OVERLAY_URL,
+    )
     monkeypatch.setattr(analysis, "_mediapipe_module", _FakeMediaPipe)
     if landmarks is None:
         landmarks = (
@@ -232,6 +238,28 @@ def test_upload_with_obra_id_query(monkeypatch, fake_supabase, auth_headers):
     response = _upload("por_query.png", auth_headers, params={"obra_id": "obras-9"})
     assert response.status_code == 200
     assert fake_supabase.store["imagenes"][0]["obra_id"] == "obras-9"
+
+
+def test_overlay_url_guardada_en_resultados_y_analisis(
+    monkeypatch, fake_supabase, auth_headers
+):
+    _mock_pipeline(monkeypatch)
+    assert _upload(
+        "con_overlay.png", auth_headers, data={"obra_id": "obras-1"}
+    ).status_code == 200
+
+    payload = client.get("/results/con_overlay.png", headers=auth_headers).json()
+    assert payload["overlay_url"] == OVERLAY_URL
+    assert fake_supabase.store["analisis"][0]["overlay_url"] == OVERLAY_URL
+
+
+def test_sin_overlay_sin_obra_id(monkeypatch, fake_supabase, auth_headers):
+    _mock_pipeline(monkeypatch)
+    assert _upload("sin_overlay.png", auth_headers).status_code == 200
+
+    payload = client.get("/results/sin_overlay.png", headers=auth_headers).json()
+    assert payload["overlay_url"] is None
+    assert fake_supabase.store["analisis"][0]["overlay_url"] is None
 
 
 def test_results_not_found(auth_headers):

@@ -1,8 +1,9 @@
-import { useEffect, useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type ChangeEvent, type FormEvent } from 'react'
 import {
   Building2,
   CalendarDays,
   FileDown,
+  ImageUp,
   MapPin,
   Plus,
   RefreshCw,
@@ -32,9 +33,12 @@ export function Obras() {
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [downloadingId, setDownloadingId] = useState<string | null>(null)
+  const [planoObraId, setPlanoObraId] = useState<string | null>(null)
+  const [uploadingPlanoId, setUploadingPlanoId] = useState<string | null>(null)
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(
     null,
   )
+  const planoInputRef = useRef<HTMLInputElement>(null)
 
   const load = () => {
     setLoading(true)
@@ -92,6 +96,27 @@ export function Obras() {
       setToast({ message: errorMessage(cause, 'No se pudo descargar el reporte.'), tone: 'error' })
     } finally {
       setDownloadingId(null)
+    }
+  }
+
+  const handlePlanoSeleccionado = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    const obraId = planoObraId
+    event.target.value = ''
+    if (!file || !obraId) return
+
+    setUploadingPlanoId(obraId)
+    try {
+      const actualizada = await obrasApi.uploadPlano(obraId, file)
+      setObras((current) =>
+        current.map((obra) => (obra.id === obraId ? actualizada : obra)),
+      )
+      setToast({ message: 'Plano subido correctamente.', tone: 'success' })
+    } catch (cause) {
+      setToast({ message: errorMessage(cause, 'No se pudo subir el plano.'), tone: 'error' })
+    } finally {
+      setUploadingPlanoId(null)
+      setPlanoObraId(null)
     }
   }
 
@@ -182,11 +207,33 @@ export function Obras() {
                 </p>
               </div>
               <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-800/80">
-                <p className="font-mono text-[10px] text-slate-400">ID · {shortId(obra.id)}</p>
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-mono text-[10px] text-slate-400">
+                    ID · {shortId(obra.id)}
+                  </p>
+                  {obra.plano_url && (
+                    <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-300">
+                      Plano cargado
+                    </span>
+                  )}
+                </div>
                 <Button
                   variant="outline"
                   size="sm"
                   className="mt-3 w-full"
+                  loading={uploadingPlanoId === obra.id}
+                  leftIcon={<ImageUp className="h-3.5 w-3.5" />}
+                  onClick={() => {
+                    setPlanoObraId(obra.id)
+                    planoInputRef.current?.click()
+                  }}
+                >
+                  {obra.plano_url ? 'Cambiar Plano' : 'Subir Plano'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="mt-2 w-full"
                   loading={downloadingId === obra.id}
                   leftIcon={<FileDown className="h-3.5 w-3.5" />}
                   onClick={() => void handleDownload(obra)}
@@ -250,6 +297,14 @@ export function Obras() {
           </div>
         </form>
       </Modal>
+
+      <input
+        ref={planoInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(event) => void handlePlanoSeleccionado(event)}
+      />
 
       <Toast
         message={toast?.message ?? null}
