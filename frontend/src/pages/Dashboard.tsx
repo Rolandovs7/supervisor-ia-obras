@@ -36,10 +36,7 @@ const accentStyles = {
   emerald: 'bg-emerald-500/10 text-emerald-500',
 }
 
-const USB_CAMERA_PATTERN =
-  /usb|webcam|logitech|elgato|creative|brio|c9\d{2}|hd pro|basler|hikvision|dahua|axis/i
-const INTEGRATED_CAMERA_PATTERN =
-  /integrated|built[- ]?in|facetime|isight|laptop|notebook|internal/i
+const USB_CAMERA_PATTERN = /xhc|imc networks/i
 
 function seleccionarCamaraUsb(
   dispositivos: MediaDeviceInfo[],
@@ -51,8 +48,7 @@ function seleccionarCamaraUsb(
     entradas.find(
       (dispositivo) =>
         Boolean(dispositivo.deviceId) &&
-        USB_CAMERA_PATTERN.test(dispositivo.label) &&
-        !INTEGRATED_CAMERA_PATTERN.test(dispositivo.label),
+        USB_CAMERA_PATTERN.test(dispositivo.label),
     ) ?? null
   )
 }
@@ -196,12 +192,12 @@ export function Dashboard() {
     setCameraLoading(true)
     try {
       const dispositivos = await navigator.mediaDevices.enumerateDevices()
-      let seleccionada = seleccionarCamaraUsb(dispositivos)
+      let camaraUsb = seleccionarCamaraUsb(dispositivos)
 
       // Chrome hides device labels until camera permission is granted. Open a
       // throwaway stream only in that case, then enumerate again with labels.
       if (
-        !seleccionada &&
+        !camaraUsb &&
         dispositivos.some(
           (dispositivo) =>
             dispositivo.kind === 'videoinput' && !dispositivo.label,
@@ -209,17 +205,17 @@ export function Dashboard() {
       ) {
         const permiso = await navigator.mediaDevices.getUserMedia({ video: {} })
         permiso.getTracks().forEach((track) => track.stop())
-        seleccionada = seleccionarCamaraUsb(
+        camaraUsb = seleccionarCamaraUsb(
           await navigator.mediaDevices.enumerateDevices(),
         )
       }
 
-      const constraints: MediaStreamConstraints = seleccionada?.deviceId
-        ? { video: { deviceId: { exact: seleccionada.deviceId } } }
+      const constraints: MediaStreamConstraints = camaraUsb?.deviceId
+        ? { video: { deviceId: { exact: camaraUsb.deviceId } } }
         : { video: true }
       const stream = await navigator.mediaDevices.getUserMedia(constraints)
       streamRef.current = stream
-      setCamaraSeleccionada(seleccionada)
+      setCamaraSeleccionada(camaraUsb)
       setCameraActive(true)
       setToast(null)
     } catch (cause) {
